@@ -1,3 +1,6 @@
 [submodule "ml_pkg"]
 	path = ml_pkg
 	url = https://github.com/Tomoya-K-0504/pytorch_wrapper.git
+[submodule "eeg_pkg"]
+	path = eeg_pkg
+	url = https://github.com/Tomoya-K-0504/eeglibrary.git
