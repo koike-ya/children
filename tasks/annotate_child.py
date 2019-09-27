@@ -146,6 +146,8 @@ def annotate_child(excel_path, annotate_conf):
 
         del splitted_data
 
+        make_manifest(pat_info['id'], data_dir, annotate_conf['train_size'], annotate_conf['val_size'])
+
 
 if __name__ == '__main__':
     excel_path = '/media/tomoya/SSD-PGU3/research/brain/children/eeg_annotation.xlsx'
