@@ -5,8 +5,11 @@ from eeglibrary.src.eeg_dataloader import set_dataloader
 from ml.models.model_manager import model_manager_args, BaseModelManager
 from eeglibrary.src.eeg_dataset import EEGDataSet
 from eeglibrary.src.preprocessor import preprocess_args
-from eeglibrary import EEG
+from eeglibrary import eeg
 import torch
+
+
+LABELS = {'none': 0, 'seiz': 1, 'arch': 2}
 
 
 def train_args(parser):
@@ -20,12 +23,11 @@ def train_args(parser):
 
 
 def label_func(path):
-    labels = {'none': 0, 'seiz': 1, 'arch': 0}
-    return labels[path.split('/')[-1].replace('.pkl', '').split('_')[-1]]
+    return LABELS[path.split('/')[-1].replace('.pkl', '').split('_')[-1]]
 
 
 def load_func(path):
-    return torch.from_numpy(EEG.load_pkl(path).values.reshape(-1,))
+    return torch.from_numpy(eeg.load_pkl(path).values.reshape(-1, ))
 
 
 def train(train_conf) -> float:
@@ -33,10 +35,11 @@ def train(train_conf) -> float:
     phases = ['train', 'val', 'test']
 
     if train_conf['task_type'] == 'classify':
-        class_names = ['none', 'seiz']
+        class_names = list(LABELS.keys())
         metrics = [
             Metric('loss', direction='minimize'),
             Metric('accuracy', direction='maximize', save_model=True),
+            # Metric('recall', direction='maximize'),
             Metric('far', direction='minimize')
         ]
     else:

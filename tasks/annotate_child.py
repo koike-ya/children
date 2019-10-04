@@ -11,7 +11,7 @@ from eeglibrary.src import EEG
 import argparse
 
 LABEL_COLUMNS = ['id', 'number', 'initial', 'date', 'start_time', 'end_time', 'abstruct', 'detail', 'label']
-LABEL_KIND = ['none', 'seiz', 'arch']
+LABEL_KIND = ['none', 'seiz', 'arti']
 PHASES = ['train', 'val', 'test']
 
 
@@ -76,18 +76,19 @@ def annotate(sr, label_info, with_artifact=False):
     return label_list
 
 
-def make_manifest(patient_id, save_dir, train_size: float, val_size: float):
-    if not Path(save_dir / patient_id).is_dir():
-        return
-    path_list = list(Path(save_dir / patient_id).iterdir())
-    path_list.sort(key=lambda x: int(x.name.split('_')[0]))
+def make_manifest(patient_id, renamed_list, train_size: float, val_size: float):
+    # if not Path(save_dir / patient_id).is_dir():
+    #     return
+    # path_list = list(Path(save_dir / patient_id).iterdir())
+    # path_list.sort(key=lambda x: int(x.name.split('_')[0]))
     size_list = [train_size, train_size + val_size, 1.0]
+    save_dir = Path(renamed_list[0]).parents[1]
     # データが保存されたパスのリストを受け取り、train, val, testに分割し、それぞれcsvファイルに保存する
     start_idx = 0
     for phase, size in zip(PHASES, size_list):
-        pd.DataFrame(path_list[start_idx:int(len(path_list) * size)]).to_csv(
-            Path(save_dir) / '{}_{}_manifest.csv'.format(patient_id, phase), index=False, header=None)
-        start_idx = int(len(path_list) * size)
+        pd.DataFrame(renamed_list[start_idx:int(len(renamed_list) * size)]).to_csv(
+            save_dir / '{}_{}_manifest.csv'.format(patient_id, phase), index=False, header=None)
+        start_idx = int(len(renamed_list) * size)
 
 
 def annotate_child(excel_path, annotate_conf):
@@ -105,15 +106,18 @@ def annotate_child(excel_path, annotate_conf):
     file_suffix = '_1-1.edf'
 
     for i, pat_info in label_info.iterrows():
-        # make_manifest(pat_info['id'], data_dir, annotate_conf['train_size'], annotate_conf['val_size'])
-        # continue
+
         (data_dir / pat_info['id']).mkdir(exist_ok=True)
         # if list(Path(data_dir / pat_info['id']).iterdir()):
         #     continue
 
         data = load_edf(f"{data_dir}/{pat_info['id']}{file_suffix}")
         sr = data.sr
-        splitted_data = data.split(window_size=window_size, n_jobs=annotate_conf['n_jobs'])
+        electrodes = [2, 3, 6, 7]
+        data.values = data.values[electrodes, :]
+        data.channel_list = [data.channel_list[i] for i in electrodes]
+        splitted_data = data.split(window_size=window_size, n_jobs=annotate_conf['n_jobs'], padding=0)
+
         del data
 
         # 先に保存してメモリエラーを回避して、ファイル名にだけ操作を加えてアノテーションする
@@ -146,7 +150,7 @@ def annotate_child(excel_path, annotate_conf):
 
         del splitted_data
 
-        make_manifest(pat_info['id'], data_dir, annotate_conf['train_size'], annotate_conf['val_size'])
+        make_manifest(pat_info['id'], renamed_list, annotate_conf['train_size'], annotate_conf['val_size'])
 
 
 if __name__ == '__main__':
