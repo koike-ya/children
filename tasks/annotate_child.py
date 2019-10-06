@@ -17,8 +17,6 @@ PHASES = ['train', 'val', 'test']
 
 def annotate_args(parser):
     annotate_parser = parser.add_argument_group('annotation arguments')
-    annotate_parser.add_argument('--train-size', type=float, default=0.6)
-    annotate_parser.add_argument('--val-size', type=float, default=0.2)
     annotate_parser.add_argument('--include-artifact', action='store_true', help='Weather to include archifact or not')
     annotate_parser.add_argument('--n-jobs', type=int, default=4, help='Number of CPUs to use to annotate')
 
