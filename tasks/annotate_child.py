@@ -3,6 +3,7 @@ from pathlib import Path
 import os
 
 import pandas as pd
+import numpy as np
 import pyedflib
 from tqdm import tqdm
 
@@ -13,12 +14,16 @@ import argparse
 LABEL_COLUMNS = ['id', 'number', 'initial', 'date', 'start_time', 'end_time', 'abstruct', 'detail', 'label']
 LABEL_KIND = ['none', 'seiz', 'arti']
 PHASES = ['train', 'val', 'test']
+CHANNELS = ['Fp1', 'Fp2', 'O1', 'O2']
+BASE_CHANNELS = ['A1', 'A2']
 
 
 def annotate_args(parser):
     annotate_parser = parser.add_argument_group('annotation arguments')
     annotate_parser.add_argument('--include-artifact', action='store_true', help='Weather to include archifact or not')
     annotate_parser.add_argument('--n-jobs', type=int, default=4, help='Number of CPUs to use to annotate')
+    annotate_parser.add_argument('--train-size', type=float, default=0.6, help='Train size')
+    annotate_parser.add_argument('--val-size', type=float, default=0.2, help='Validation size')
 
     return parser
 
@@ -49,6 +54,8 @@ def annotate(sr, label_info, with_artifact=False):
     def time_to_index(time_):
         time_ = dt.strptime(time_, '%H:%M:%S').time()
         diff = {d: getattr(time_, d) - getattr(start_time, d) for d in ['hour', 'minute', 'second']}
+        if diff['hour'] < 0:
+            diff['hour'] += 24
         return (diff['hour'] * 60 * 60 + diff['minute'] * 60 + diff['second']) * sr
 
     labels = label_info['label'].split('\n')
@@ -75,10 +82,6 @@ def annotate(sr, label_info, with_artifact=False):
 
 
 def make_manifest(patient_id, renamed_list, train_size: float, val_size: float):
-    # if not Path(save_dir / patient_id).is_dir():
-    #     return
-    # path_list = list(Path(save_dir / patient_id).iterdir())
-    # path_list.sort(key=lambda x: int(x.name.split('_')[0]))
     size_list = [train_size, train_size + val_size, 1.0]
     save_dir = Path(renamed_list[0]).parents[1]
     # データが保存されたパスのリストを受け取り、train, val, testに分割し、それぞれcsvファイルに保存する
@@ -88,6 +91,28 @@ def make_manifest(patient_id, renamed_list, train_size: float, val_size: float):
             save_dir / '{}_{}_manifest.csv'.format(patient_id, phase), index=False, header=None)
         start_idx = int(len(renamed_list) * size)
 
+
+def make_edf_summary(excel_path):
+    sr = 500
+    label_info = check_input_excel(excel_path)
+    for i, pat_info in label_info.iterrows():
+        label_list = annotate(sr, pat_info, True)
+        label_list = [(dic['s_index'], dic['e_index']) for dic in label_list if dic['label'] == 'seiz']
+
+        if len(label_list) == 0:
+            continue
+
+        summary = ''
+        summary += f"File Name: {pat_info['id']}_1-1.edf\n"
+        summary += f"File Start Time: {pat_info['start_time']}\n"
+        summary += f"File End Time: {pat_info['end_time']}\n"
+        summary += f"Number of Seizures in File: {len(label_list)}"
+        for i, (start, end) in enumerate(label_list):
+            summary += f'\nSeizure {i+1} Start Time: {int(start // sr)} seconds'
+            summary += f'\nSeizure {i+1} End Time: {int(end // sr)} seconds'
+
+        with open(Path(excel_path).parent / f"{pat_info['id']}-summary.txt", 'w') as f:
+            f.write(summary)
 
 def annotate_child(excel_path, annotate_conf):
     """
@@ -111,9 +136,14 @@ def annotate_child(excel_path, annotate_conf):
 
         data = load_edf(f"{data_dir}/{pat_info['id']}{file_suffix}")
         sr = data.sr
-        electrodes = [2, 3, 6, 7]
-        data.values = data.values[electrodes, :]
-        data.channel_list = [data.channel_list[i] for i in electrodes]
+
+        signals = np.zeros((len(CHANNELS), data.values.shape[1]))
+        channel_list = []
+        for i, channel in enumerate(CHANNELS):
+            signals[i] = data.values[data.channel_list.index(channel)] - data.values[data.channel_list.index(BASE_CHANNELS[i % 2]), :]
+            channel_list.append(f'{channel}-{BASE_CHANNELS[i % 2]}')
+        data.values = signals
+        data.channel_list = channel_list
         splitted_data = data.split(window_size=window_size, n_jobs=annotate_conf['n_jobs'], padding=0)
 
         del data
@@ -156,3 +186,4 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Annotation arguments')
     annotate_conf = vars(annotate_args(parser).parse_args())
     annotate_child(excel_path, annotate_conf)
+    # make_edf_summary(excel_path)
