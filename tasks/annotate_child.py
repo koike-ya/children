@@ -124,7 +124,7 @@ def annotate_child(excel_path, annotate_conf):
     データを読み込んで分割し、一旦保存する。次にラベルを解析してインデックスを計算し、保存したファイル名を変更することでアノテーションする
     """
     data_dir = Path(excel_path).parent
-    window_size = 1
+    window_size = 16
     label_info = check_input_excel(excel_path)
     file_suffix = '_1-1.edf'
 
