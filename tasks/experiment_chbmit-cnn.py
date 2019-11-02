@@ -9,7 +9,7 @@ from ml.tasks.train_manager import TrainManager, train_manager_args
 import torch
 
 
-LABELS = {'none': 0, 'seiz': 1, 'arch': 2}
+LABELS = {'none': 0, 'seiz': 1}
 
 
 def train_args(parser):
@@ -43,6 +43,10 @@ def experiment(train_conf) -> float:
     train_manager = TrainManager(train_conf, load_func, label_func, dataset_cls, set_dataloader_func, metrics)
 
     train_manager.train()
+
+    if train_conf['test']:
+        train_manager.test()
+
 
 
 if __name__ == '__main__':
