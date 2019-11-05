@@ -20,7 +20,7 @@ BASE_CHANNELS = ['A1', 'A2']
 
 def annotate_args(parser):
     annotate_parser = parser.add_argument_group('annotation arguments')
-    annotate_parser.add_argument('--include-artifact', action='store_true', help='Weather to include archifact or not')
+    annotate_parser.add_argument('--include-artifact', action='store_true', help='Weather to include artiifact or not')
     annotate_parser.add_argument('--n-jobs', type=int, default=4, help='Number of CPUs to use to annotate')
     annotate_parser.add_argument('--train-size', type=float, default=0.6, help='Train size')
     annotate_parser.add_argument('--val-size', type=float, default=0.2, help='Validation size')
@@ -66,7 +66,7 @@ def annotate(sr, label_info, with_artifact=False):
         elif label_time[:7] == 'アーチファクト':
             if not with_artifact:
                 continue
-            label = 'arch'
+            label = 'arti'
             duration = label_time[8:].split(',')
         else:
             raise NotImplementedError
@@ -83,13 +83,16 @@ def annotate(sr, label_info, with_artifact=False):
 
 def make_manifest(patient_id, renamed_list, train_size: float, val_size: float):
     size_list = [train_size, train_size + val_size, 1.0]
-    save_dir = Path(renamed_list[0]).parents[1]
+    save_dir = Path(renamed_list['none'][0]).parents[1]
     # データが保存されたパスのリストを受け取り、train, val, testに分割し、それぞれcsvファイルに保存する
-    start_idx = 0
+    start_idx_list = {label: 0 for label in renamed_list.keys()}
     for phase, size in zip(PHASES, size_list):
-        pd.DataFrame(renamed_list[start_idx:int(len(renamed_list) * size)]).to_csv(
-            save_dir / '{}_{}_manifest.csv'.format(patient_id, phase), index=False, header=None)
-        start_idx = int(len(renamed_list) * size)
+        df = pd.DataFrame()
+
+        for label in renamed_list.keys():
+            df = pd.concat([df, pd.DataFrame(renamed_list[label][start_idx_list[label]:int(len(renamed_list[label]) * size)])])
+            start_idx_list[label] = int(len(renamed_list[label]) * size)
+        df.to_csv(save_dir / '{}_{}_manifest.csv'.format(patient_id, phase), index=False, header=None)
 
 
 def make_edf_summary(excel_path):
@@ -113,6 +116,7 @@ def make_edf_summary(excel_path):
 
         with open(Path(excel_path).parent / f"{pat_info['id']}-summary.txt", 'w') as f:
             f.write(summary)
+
 
 def annotate_child(excel_path, annotate_conf):
     """
@@ -150,7 +154,9 @@ def annotate_child(excel_path, annotate_conf):
 
         # 先に保存してメモリエラーを回避して、ファイル名にだけ操作を加えてアノテーションする
         saved_list = []
-        renamed_list = []
+        labels = ['none', 'seiz', 'arti'] if annotate_conf['include_artifact'] else ['none', 'seiz']
+        renamed_list = {label: [] for label in labels}
+
         for i, splitted in tqdm(enumerate(splitted_data), total=len(splitted_data)):
             s_index = i * sr * window_size
             file_name = f'{s_index}_{s_index + sr * window_size}.pkl'
@@ -174,7 +180,7 @@ def annotate_child(excel_path, annotate_conf):
                 label = 'none'
 
             os.rename(saved_path, f'{saved_path.parent}/{saved_path.stem}_{label}.pkl')
-            renamed_list.append(f'{saved_path.parent}/{saved_path.stem}_{label}.pkl')
+            renamed_list[label].append(f'{saved_path.parent}/{saved_path.stem}_{label}.pkl')
 
         del splitted_data
 

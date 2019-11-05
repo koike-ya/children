@@ -42,11 +42,7 @@ def experiment(train_conf) -> float:
     train_conf['class_names'] = list(LABELS.values())
     train_manager = TrainManager(train_conf, load_func, label_func, dataset_cls, set_dataloader_func, metrics)
 
-    train_manager.train()
-
-    if train_conf['test']:
-        train_manager.test()
-
+    train_manager.train_test()
 
 
 if __name__ == '__main__':
