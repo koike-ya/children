@@ -1,5 +1,6 @@
 import pandas as pd
 import argparse
+from pathlib import Path
 from ml.src.metrics import Metric
 from eeglibrary.src.eeg_dataloader import set_dataloader
 from eeglibrary.src.eeg_dataset import EEGDataSet
@@ -7,14 +8,17 @@ from eeglibrary.src.preprocessor import preprocess_args
 from eeglibrary import eeg
 from ml.tasks.train_manager import TrainManager, train_manager_args
 import torch
+import json
 
 
-LABELS = {'none': 0, 'seiz': 1, 'arch': 2}
+LABELS = {'none': 0, 'seiz': 1, 'arch': 0}
 
 
 def train_args(parser):
     parser = train_manager_args(parser)
     parser = preprocess_args(parser)
+    expt_parser = parser.add_argument_group("Experiment arguments")
+    expt_parser.add_argument('--expt-id', help='data file for training', default='')
 
     return parser
 
@@ -33,16 +37,24 @@ def experiment(train_conf) -> float:
     set_dataloader_func = set_dataloader
 
     metrics = [
-        Metric('loss', direction='minimize'),
-        Metric('accuracy', direction='maximize', save_model=True),
+        Metric('loss', direction='minimize', save_model=True),
+        Metric('accuracy', direction='maximize'),
         Metric('recall_1', direction='maximize'),
         Metric('far', direction='minimize')
     ]
 
-    train_conf['class_names'] = list(LABELS.values())
+    train_conf['class_names'] = list(set(LABELS.values()))
     train_manager = TrainManager(train_conf, load_func, label_func, dataset_cls, set_dataloader_func, metrics)
 
-    train_manager.train()
+    model, metrics = train_manager.train_test()
+
+    expt_name = f"{len(train_conf['class_names'])}-class_{train_conf['model_type']}_{train_conf['expt_id']}.txt"
+    with open(Path(__file__).parents[1] / 'output' / expt_name, 'w') as f:
+        f.write(f"{train_conf['k_fold']} fold results:\n")
+        for metric_name, meter in metrics.items():
+            f.write(f'{metric_name} score\t mean: {meter.mean() :.4f}\t std: {meter.std() :.4f}\n')
+        f.write('\nParameters:\n')
+        f.write(json.dumps(train_conf, indent=4))
 
     # if train_conf['train_manifest'] == 'all':
     #     for sub_name in subject_dir_names:
