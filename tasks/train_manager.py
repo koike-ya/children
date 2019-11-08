@@ -38,13 +38,14 @@ def load_func(path):
 
 
 class TrainManager:
-    def __init__(self, train_conf, load_func, label_func, dataset_cls, set_dataloader_func, metrics):
+    def __init__(self, train_conf, load_func, label_func, dataset_cls, set_dataloader_func, metrics, expt_note):
         self.train_conf = train_conf
         self.load_func = load_func
         self.label_func = label_func
         self.dataset_cls = dataset_cls
         self.set_dataloader_func = set_dataloader_func
         self.metrics = metrics
+        self.expt_note = expt_note
         self.is_manifest = 'manifest' in self.train_conf['train_path']
         self.each_patient_df = self._set_each_patient_df()
 
@@ -103,6 +104,7 @@ class TrainManager:
         assert float(n_patients_to_test) == len(PATIENTS) / k
         test_patients = PATIENTS[fold_count * n_patients_to_test:(fold_count + 1) * n_patients_to_test]
         print(f'{test_patients} will be used as test patients')
+        self.expt_note += f'{test_patients}'
         test_path_df = [df for patient, df in self.each_patient_df.items() if patient in test_patients]
         test_path_df = pd.concat(test_path_df, axis=0, sort=False)
 
@@ -150,6 +152,9 @@ class TrainManager:
             for metric in result_metrics:
                 k_fold_metrics[metric.name][i] = metric.average_meter['test'].best_score
                 # print(f"Metric {metric.name} best score: {metric.average_meter['val'].best_score}")
+                if metric.name in ['accuracy', 'recall_1']:
+                    self.expt_note += f"\t{metric.average_meter['test'].best_score}"
+            self.expt_note += '\n'
 
         [print(f'{i + 1} fold {metric_name} score\t mean: {meter.mean() :.4f}\t std: {meter.std() :.4f}') for
          metric_name, meter in k_fold_metrics.items()]

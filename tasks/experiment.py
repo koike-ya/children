@@ -36,6 +36,7 @@ def experiment(train_conf) -> float:
 
     dataset_cls = EEGDataSet
     set_dataloader_func = set_dataloader
+    expt_note = 'Test Patient\tAccuracy\tRecall\n'
 
     metrics = [
         Metric('loss', direction='minimize', save_model=True),
@@ -45,13 +46,14 @@ def experiment(train_conf) -> float:
     ]
 
     train_conf['class_names'] = list(set(LABELS.values()))
-    train_manager = TrainManager(train_conf, load_func, label_func, dataset_cls, set_dataloader_func, metrics)
+    train_manager = TrainManager(train_conf, load_func, label_func, dataset_cls, set_dataloader_func, metrics, expt_note)
 
     model, metrics = train_manager.train_test()
 
     now_time = datetime.today().strftime('%y%m%H%M')
     expt_name = f"{len(train_conf['class_names'])}-class_{train_conf['model_type']}_{train_conf['expt_id']}_{now_time}.txt"
     with open(Path(__file__).parents[1] / 'output' / expt_name, 'w') as f:
+        f.write(f"experiment notes:\n{train_manager.expt_note}\n\n")
         f.write(f"{train_conf['k_fold']} fold results:\n")
         for metric_name, meter in metrics.items():
             f.write(f'{metric_name} score\t mean: {meter.mean() :.4f}\t std: {meter.std() :.4f}\n')
