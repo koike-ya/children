@@ -52,7 +52,7 @@ def experiment(train_conf) -> float:
 
     now_time = datetime.today().strftime('%y%m%H%M')
     expt_name = f"{len(train_conf['class_names'])}-class_{train_conf['model_type']}_{train_conf['expt_id']}_{now_time}.txt"
-    with open(Path(__file__).parents[1] / 'output' / expt_name, 'w') as f:
+    with open(Path(__file__).parent.parent / 'output' / expt_name, 'w') as f:
         f.write(f"experiment notes:\n{train_manager.expt_note}\n\n")
         f.write(f"{train_conf['k_fold']} fold results:\n")
         for metric_name, meter in metrics.items():
