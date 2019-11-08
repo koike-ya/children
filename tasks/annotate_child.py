@@ -128,14 +128,14 @@ def annotate_child(excel_path, annotate_conf):
     データを読み込んで分割し、一旦保存する。次にラベルを解析してインデックスを計算し、保存したファイル名を変更することでアノテーションする
     """
     data_dir = Path(excel_path).parent
-    window_size = 16
+    window_size = 1
     label_info = check_input_excel(excel_path)
     file_suffix = '_1-1.edf'
 
     for i, pat_info in label_info.iterrows():
 
         (data_dir / pat_info['id']).mkdir(exist_ok=True)
-        # if list(Path(data_dir / pat_info['id']).iterdir()):
+        # if pat_info['id'] != 'MJ00802S':
         #     continue
 
         data = load_edf(f"{data_dir}/{pat_info['id']}{file_suffix}")
@@ -177,6 +177,7 @@ def annotate_child(excel_path, annotate_conf):
             elif label_list[label_pointer]['s_index'] <= s_index < label_list[label_pointer]['e_index']:
                 label = label_list[label_pointer]['label']
             else:
+                # TODO 1秒間のラベルがついているものは全部noneになってしまうのでは。
                 label = 'none'
 
             os.rename(saved_path, f'{saved_path.parent}/{saved_path.stem}_{label}.pkl')
@@ -191,5 +192,6 @@ if __name__ == '__main__':
     excel_path = '/media/tomoya/SSD-PGU3/research/brain/children/eeg_annotation.xlsx'
     parser = argparse.ArgumentParser(description='Annotation arguments')
     annotate_conf = vars(annotate_args(parser).parse_args())
-    annotate_child(excel_path, annotate_conf)
+    # annotate_child(excel_path, annotate_conf)
     # make_edf_summary(excel_path)
+    make_inter_patient_manifest(annotate_conf)

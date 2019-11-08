@@ -1,17 +1,18 @@
 import pandas as pd
 import argparse
 from pathlib import Path
+from datetime import datetime
 from ml.src.metrics import Metric
 from eeglibrary.src.eeg_dataloader import set_dataloader
 from eeglibrary.src.eeg_dataset import EEGDataSet
 from eeglibrary.src.preprocessor import preprocess_args
 from eeglibrary import eeg
-from ml.tasks.train_manager import TrainManager, train_manager_args
+from train_manager import TrainManager, train_manager_args
 import torch
 import json
 
 
-LABELS = {'none': 0, 'seiz': 1, 'arch': 0}
+LABELS = {'none': 0, 'seiz': 1}
 
 
 def train_args(parser):
@@ -48,7 +49,8 @@ def experiment(train_conf) -> float:
 
     model, metrics = train_manager.train_test()
 
-    expt_name = f"{len(train_conf['class_names'])}-class_{train_conf['model_type']}_{train_conf['expt_id']}.txt"
+    now_time = datetime.today().strftime('%y%m%H%M')
+    expt_name = f"{len(train_conf['class_names'])}-class_{train_conf['model_type']}_{train_conf['expt_id']}_{now_time}.txt"
     with open(Path(__file__).parents[1] / 'output' / expt_name, 'w') as f:
         f.write(f"{train_conf['k_fold']} fold results:\n")
         for metric_name, meter in metrics.items():
