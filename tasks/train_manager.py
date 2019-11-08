@@ -21,6 +21,8 @@ def train_manager_args(parser):
     train_parser.add_argument('--only-test', action='store_true', help='Load learned model and not training')
     train_parser.add_argument('--k-fold', type=int, default=0,
                               help='The number of folds. 1 means training with whole train data')
+    train_parser.add_argument('--fold-type', default='normal', help='Type of cross validation.',
+                              choices=['normal', 'patient'])
     train_parser.add_argument('--test', action='store_true', help='Do testing, You should be specify k-fold with 1.')
     train_parser.add_argument('--infer', action='store_true', help='Do inference with test_path data,')
     train_parser.add_argument('--model-manager', default='pytorch')
@@ -47,10 +49,10 @@ class TrainManager:
         self.metrics = metrics
         self.expt_note = expt_note
         self.is_manifest = 'manifest' in self.train_conf['train_path']
-        self.each_patient_df = self._set_each_patient_df()
+        self.data_dfs = self._set_data_dfs()
 
-    def _set_each_patient_df(self):
-        each_patient_df = {}
+    def _set_data_dfs(self):
+        data_dfs = {}
 
         if self.is_manifest:
             for patient in PATIENTS:
@@ -59,7 +61,7 @@ class TrainManager:
                     path = Path(self.train_conf[f'{phase}_path'])
                     manifest_name = f"{patient}_{phase}_{path.name.split('_')[2]}"
                     data_df = pd.concat([data_df, pd.read_csv(path.parent / manifest_name, header=None)])
-                each_patient_df[patient] = data_df
+                data_dfs[patient] = data_df
         else:
             raise NotImplementedError
             # for patient in PATIENTS:
@@ -67,7 +69,7 @@ class TrainManager:
             #         path = self.train_conf[f'{phase}_path']
             #         data_df = pd.concat([data_df, pd.read_csv(path, header=None)])
 
-        return each_patient_df
+        return data_dfs
 
     def _init_model_manager(self, dataloaders):
         # modelManagerをインスタンス化、trainの実行
@@ -81,6 +83,60 @@ class TrainManager:
             raise NotImplementedError
 
         return model_manager
+
+    def _patient_one_out_cv(self, fold_count, k):
+        n_patients_to_test = len(PATIENTS) // k
+        assert float(n_patients_to_test) == len(PATIENTS) / k
+        test_patients = PATIENTS[fold_count * n_patients_to_test:(fold_count + 1) * n_patients_to_test]
+        print(f'{test_patients} will be used as test patients')
+        self.expt_note += f'{test_patients}'
+        test_path_df = [df for patient, df in self.data_df.items() if patient in test_patients]
+        test_path_df = pd.concat(test_path_df, axis=0, sort=False)
+
+        train_val_dfs = [df for patient, df in self.data_df.items() if patient not in test_patients]
+        train_val_dfs = pd.concat(train_val_dfs, axis=0, sort=False)
+
+        train_path_df = pd.DataFrame()
+        val_path_df = pd.DataFrame()
+
+        # あとでラベルを結合するので、各患者毎にそれぞれのラベルを取り出して結合する
+        for patient in PATIENTS:
+            if patient in test_patients:
+                continue
+            df = self.data_df[patient]
+            all_labels = df.squeeze().apply(lambda x: self.label_func(x))
+            for label in list(set(all_labels)):
+                df_one_label = df[all_labels == label].reset_index(drop=True)
+                train_path_df = pd.concat([train_path_df, df_one_label.iloc[:int(len(df_one_label) * 0.8)]])
+                val_path_df = pd.concat([val_path_df, df_one_label.iloc[int(len(df_one_label) * 0.8):]])
+
+        return train_path_df, val_path_df, test_path_df
+
+    def _normal_cv(self, fold_count, k):
+        data_dfs = pd.concat(list(self.data_dfs.values()), axis=0)
+        all_labels = data_dfs.squeeze().apply(lambda x: self.label_func(x))
+
+        self.data_dfs = {}
+        for class_ in self.train_conf['class_names']:
+            self.data_dfs[class_] = data_dfs[all_labels == class_].reset_index(drop=True)
+
+        test_path_df = pd.DataFrame()
+        val_path_df = pd.DataFrame()
+        train_path_df = pd.DataFrame()
+        for class_, label_df in self.data_dfs.items():
+            one_phase_length = len(label_df) // self.train_conf['k_fold']
+            start_index = fold_count * one_phase_length
+            leave_out = label_df.iloc[start_index:start_index + one_phase_length, :]
+            test_path_df = pd.concat([test_path_df, leave_out]).reset_index(drop=True)
+
+            train_val_df = label_df[~label_df.index.isin(leave_out.index)].reset_index(drop=True)
+            val_start_index = (fold_count % (k - 1)) * one_phase_length
+            leave_out = train_val_df.iloc[val_start_index:val_start_index + one_phase_length, :]
+            val_path_df = pd.concat([val_path_df, leave_out])
+
+            train_path_df = pd.concat([train_path_df, train_val_df[~train_val_df.index.isin(leave_out.index)]])
+
+        return train_path_df, val_path_df, test_path_df
 
     def _train_test(self):
         # dataset, dataloaderの作成
@@ -100,30 +156,10 @@ class TrainManager:
     def _update_data_paths(self, fold_count: int, k: int):
         # fold_count...k-foldのうちでいくつ目か
 
-        n_patients_to_test = len(PATIENTS) // k
-        assert float(n_patients_to_test) == len(PATIENTS) / k
-        test_patients = PATIENTS[fold_count * n_patients_to_test:(fold_count + 1) * n_patients_to_test]
-        print(f'{test_patients} will be used as test patients')
-        self.expt_note += f'{test_patients}'
-        test_path_df = [df for patient, df in self.each_patient_df.items() if patient in test_patients]
-        test_path_df = pd.concat(test_path_df, axis=0, sort=False)
-
-        train_val_dfs = [df for patient, df in self.each_patient_df.items() if patient not in test_patients]
-        train_val_dfs = pd.concat(train_val_dfs, axis=0, sort=False)
-
-        train_path_df = pd.DataFrame()
-        val_path_df = pd.DataFrame()
-
-        # あとでラベルを結合するので、各患者毎にそれぞれのラベルを取り出して結合する
-        for patient in PATIENTS:
-            if patient in test_patients:
-                continue
-            df = self.each_patient_df[patient]
-            all_labels = df.squeeze().apply(lambda x: self.label_func(x))
-            for label in list(set(all_labels)):
-                df_one_label = df[all_labels == label].reset_index(drop=True)
-                train_path_df = pd.concat([train_path_df, df_one_label.iloc[:int(len(df_one_label) * 0.8)]])
-                val_path_df = pd.concat([val_path_df, df_one_label.iloc[int(len(df_one_label) * 0.8):]])
+        if self.train_conf['fold_type'] == 'normal':
+            train_path_df, val_path_df, test_path_df = self._normal_cv(fold_count, k)
+        elif self.train_conf['fold_type'] == 'patient':
+            train_path_df, val_path_df, test_path_df = self._patient_one_out_cv(fold_count, k)
 
         for phase in PHASES:
             file_name = self.train_conf[f'{phase}_path'][:-4].replace('_fold', '') + '_fold.csv'

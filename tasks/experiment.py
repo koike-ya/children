@@ -13,6 +13,7 @@ import json
 
 
 LABELS = {'none': 0, 'seiz': 1}
+PATIENTS = ['YJ0112PQ', 'MJ00803P', 'YJ0100DP', 'YJ0100E9', 'MJ00802S', 'YJ01133T', 'YJ0112AU', 'WJ01003H', 'WJ010024']
 
 
 def train_args(parser):
@@ -25,7 +26,8 @@ def train_args(parser):
 
 
 def label_func(path):
-    return LABELS[path.split('/')[-1].replace('.pkl', '').split('_')[-1]]
+    # return LABELS[path.split('/')[-1].replace('.pkl', '').split('_')[-1]]
+    return PATIENTS.index(path.split('/')[-2])
 
 
 def load_func(path):
@@ -41,8 +43,8 @@ def experiment(train_conf) -> float:
     metrics = [
         Metric('loss', direction='minimize', save_model=True),
         Metric('accuracy', direction='maximize'),
-        Metric('recall_1', direction='maximize'),
-        Metric('far', direction='minimize')
+        # Metric('recall_1', direction='maximize'),
+        # Metric('far', direction='minimize')
     ]
 
     train_conf['class_names'] = list(set(LABELS.values()))
