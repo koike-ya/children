@@ -2,15 +2,16 @@ import pandas as pd
 import numpy as np
 from typing import List
 from pathlib import Path
-import argparse
+
 from copy import deepcopy
 from ml.src.metrics import Metric
 from ml.models.model_manager import model_manager_args, BaseModelManager
+from ml.src.dataloader import set_adda_dataloader
+from ml.models.adda_model_manager import AddaModelManager
 from ml.models.keras_model_manager import KerasModelManager
-from ml.src.metrics import AverageMeter
 import torch
 
-LABELS = {'none': 0, 'seiz': 1, 'arch': 2}
+LABELS = {'none': 0, 'seiz': 1, 'arti': 2}
 PHASES = ['train', 'val', 'test']
 # 'MJ01128Z'は正例がないため除去
 PATIENTS = ['YJ0112PQ', 'MJ00803P', 'YJ0100DP', 'YJ0100E9', 'MJ00802S', 'YJ01133T', 'YJ0112AU', 'WJ01003H', 'WJ010024']
@@ -19,12 +20,13 @@ PATIENTS = ['YJ0112PQ', 'MJ00803P', 'YJ0100DP', 'YJ0100E9', 'MJ00802S', 'YJ01133
 def train_manager_args(parser):
     train_parser = parser.add_argument_group('train arguments')
     train_parser.add_argument('--only-test', action='store_true', help='Load learned model and not training')
-    train_parser.add_argument('--k-fold', type=int, default=0,
+    train_parser.add_argument('--k-fold', type=int, default=9,
                               help='The number of folds. 1 means training with whole train data')
     train_parser.add_argument('--cv-type', default='normal', help='Type of cross validation.',
                               choices=['normal', 'patient'])
     train_parser.add_argument('--test', action='store_true', help='Do testing, You should be specify k-fold with 1.')
     train_parser.add_argument('--infer', action='store_true', help='Do inference with test_path data,')
+    train_parser.add_argument('--adda', action='store_true', help='Adversarial discriminative domain adaptation or not.')
     train_parser.add_argument('--model-manager', default='pytorch')
     parser = model_manager_args(parser)
 
@@ -87,34 +89,6 @@ class TrainManager:
 
         return model_manager
 
-    def _patient_one_out_cv(self, fold_count, k):
-        n_patients_to_test = len(PATIENTS) // k
-        assert float(n_patients_to_test) == len(PATIENTS) / k
-        test_patients = PATIENTS[fold_count * n_patients_to_test:(fold_count + 1) * n_patients_to_test]
-        print(f'{test_patients} will be used as test patients')
-        self.expt_note += f'{test_patients}'
-        test_path_df = [df for patient, df in self.data_df.items() if patient in test_patients]
-        test_path_df = pd.concat(test_path_df, axis=0, sort=False)
-
-        train_val_dfs = [df for patient, df in self.data_df.items() if patient not in test_patients]
-        train_val_dfs = pd.concat(train_val_dfs, axis=0, sort=False)
-
-        train_path_df = pd.DataFrame()
-        val_path_df = pd.DataFrame()
-
-        # あとでラベルを結合するので、各患者毎にそれぞれのラベルを取り出して結合する
-        for patient in PATIENTS:
-            if patient in test_patients:
-                continue
-            df = self.data_df[patient]
-            all_labels = df.squeeze().apply(lambda x: self.label_func(x))
-            for label in list(set(all_labels)):
-                df_one_label = df[all_labels == label].reset_index(drop=True)
-                train_path_df = pd.concat([train_path_df, df_one_label.iloc[:int(len(df_one_label) * 0.8)]])
-                val_path_df = pd.concat([val_path_df, df_one_label.iloc[int(len(df_one_label) * 0.8):]])
-
-        return train_path_df, val_path_df, test_path_df
-
     def _normal_cv(self, fold_count, k):
         data_dfs = pd.concat(list(self.data_dfs.values()), axis=0)
         all_labels = data_dfs.squeeze().apply(lambda x: self.label_func(x))
@@ -141,18 +115,59 @@ class TrainManager:
 
         return train_path_df, val_path_df, test_path_df
 
-    def _train_test(self):
+    def _patient_one_out_cv(self, fold_count, k):
+        n_patients_to_test = len(PATIENTS) // k
+        assert float(n_patients_to_test) == len(PATIENTS) / k
+        
+        test_patients = PATIENTS[fold_count * n_patients_to_test:(fold_count + 1) * n_patients_to_test]
+        print(f'{test_patients} will be used as test patients')
+        self.expt_note += f'{test_patients}'
+        test_path_df = [self.data_dfs[patient] for patient in test_patients]
+        test_path_df = pd.concat(test_path_df, axis=0, sort=False)
+
+        train_val_patients = [patient for patient in PATIENTS if patient not in test_patients]
+        val_start_idx = (fold_count % (k - 1)) * n_patients_to_test
+        val_patients = train_val_patients[val_start_idx:val_start_idx + n_patients_to_test]
+        print(f'{val_patients} will be used as validation patients')
+        val_path_df = [self.data_dfs[patient] for patient in val_patients]
+        val_path_df = pd.concat(val_path_df, axis=0, sort=False)
+        
+        train_path_df = [self.data_dfs[patient] for patient in train_val_patients if patient not in val_patients]
+        train_path_df = pd.concat(train_path_df, axis=0, sort=False)
+
+        return train_path_df, val_path_df, test_path_df
+
+    def _train_test(self, model=None):
         # dataset, dataloaderの作成
         dataloaders = {}
         for phase in PHASES:
-            dataset = self.dataset_cls(self.train_conf[f'{phase}_path'], self.train_conf, phase,
+            dataset = self.dataset_cls(self.train_conf[f'{phase}_path'], self.train_conf,
                                        load_func=self.load_func, label_func=self.label_func)
             dataloaders[phase] = self.set_dataloader_func(dataset, phase, self.train_conf)
 
         model_manager = self._init_model_manager(dataloaders)
 
-        model_manager.train()
+        model_manager.train(model)
         _, _, test_metrics = model_manager.test(return_metrics=True)
+
+        return test_metrics, model_manager.model
+
+    def _train_test_adda(self, whole_epoch=5):
+        orig_model = None
+        for epoch in range(whole_epoch):
+            orig_test_metrics, orig_model = self._train_test(orig_model)
+
+            # dataset, dataloaderの作成
+            dataloaders = {}
+            for domain, phase in zip(['source', 'target'], ['train', 'val']):
+                dataset = self.dataset_cls(self.train_conf[f'{phase}_path'], self.train_conf, load_func=self.load_func,
+                                           label_func=self.label_func)
+                dataloaders[domain] = set_adda_dataloader(dataset, self.train_conf)
+
+            model_manager = AddaModelManager(orig_model, self.train_conf, dataloaders, deepcopy(self.metrics))
+
+            model_manager.train()
+            _, _, test_metrics = model_manager.test(return_metrics=True, load_best=False)
 
         return test_metrics, model_manager.model
 
@@ -170,10 +185,10 @@ class TrainManager:
             self.train_conf[f'{phase}_path'] = file_name
             print(f'{phase} data:\n', locals()[f'{phase}_path_df'][0].apply(self.label_func).value_counts())
 
-    def _train_test_k_fold(self):
+    def _train_test_cv(self):
         orig_train_path = self.train_conf['train_path']
 
-        k_fold_metrics = {metric.name: np.zeros(self.train_conf['k_fold']) for metric in self.metrics}
+        cv_metrics = {metric.name: np.zeros(self.train_conf['k_fold']) for metric in self.metrics}
 
         if self.train_conf['k_fold'] == 0:
             # データ全体で学習を行う
@@ -185,23 +200,26 @@ class TrainManager:
 
             self._update_data_paths(i, self.train_conf['k_fold'])
 
-            result_metrics, model = self._train_test()
+            if self.train_conf['adda']:
+                result_metrics, model = self._train_test_adda()
+            else:
+                result_metrics, model = self._train_test()
 
             print(f'Fold {i + 1} ended.')
             for metric in result_metrics:
-                k_fold_metrics[metric.name][i] = metric.average_meter['test'].best_score
+                cv_metrics[metric.name][i] = metric.average_meter['test'].best_score
                 # print(f"Metric {metric.name} best score: {metric.average_meter['val'].best_score}")
                 if metric.name in ['accuracy', 'recall_1']:
                     self.expt_note += f"\t{metric.average_meter['test'].best_score}"
             self.expt_note += '\n'
 
         [print(f'{i + 1} fold {metric_name} score\t mean: {meter.mean() :.4f}\t std: {meter.std() :.4f}') for
-         metric_name, meter in k_fold_metrics.items()]
+         metric_name, meter in cv_metrics.items()]
 
         # 新しく作成したマニフェストファイルは削除
         [Path(self.train_conf[f'{phase}_path']).unlink() for phase in PHASES]
 
-        return model, k_fold_metrics
+        return model, cv_metrics
 
     def test(self, model_manager=None) -> List[Metric]:
         if not model_manager:
@@ -217,7 +235,7 @@ class TrainManager:
 
     def train_test(self):
         if not self.train_conf['only_test']:
-            return self._train_test_k_fold()
+            return self._train_test_cv()
         else:
             self.test()
 
