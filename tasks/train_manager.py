@@ -21,7 +21,7 @@ def train_manager_args(parser):
     train_parser.add_argument('--only-test', action='store_true', help='Load learned model and not training')
     train_parser.add_argument('--k-fold', type=int, default=0,
                               help='The number of folds. 1 means training with whole train data')
-    train_parser.add_argument('--fold-type', default='normal', help='Type of cross validation.',
+    train_parser.add_argument('--cv-type', default='normal', help='Type of cross validation.',
                               choices=['normal', 'patient'])
     train_parser.add_argument('--test', action='store_true', help='Do testing, You should be specify k-fold with 1.')
     train_parser.add_argument('--infer', action='store_true', help='Do inference with test_path data,')
@@ -60,8 +60,11 @@ class TrainManager:
                 for phase in PHASES:
                     path = Path(self.train_conf[f'{phase}_path'])
                     manifest_name = f"{patient}_{phase}_{path.name.split('_')[2]}"
+                    if not (path.parent / manifest_name).is_file():
+                        continue
                     data_df = pd.concat([data_df, pd.read_csv(path.parent / manifest_name, header=None)])
-                data_dfs[patient] = data_df
+                if not data_df.empty:
+                    data_dfs[patient] = data_df
         else:
             raise NotImplementedError
             # for patient in PATIENTS:
@@ -156,9 +159,9 @@ class TrainManager:
     def _update_data_paths(self, fold_count: int, k: int):
         # fold_count...k-foldのうちでいくつ目か
 
-        if self.train_conf['fold_type'] == 'normal':
+        if self.train_conf['cv_type'] == 'normal':
             train_path_df, val_path_df, test_path_df = self._normal_cv(fold_count, k)
-        elif self.train_conf['fold_type'] == 'patient':
+        elif self.train_conf['cv_type'] == 'patient':
             train_path_df, val_path_df, test_path_df = self._patient_one_out_cv(fold_count, k)
 
         for phase in PHASES:

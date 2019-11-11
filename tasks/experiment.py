@@ -3,7 +3,8 @@ import argparse
 from pathlib import Path
 from datetime import datetime
 from ml.src.metrics import Metric
-from eeglibrary.src.eeg_dataloader import set_dataloader
+from eeglibrary.src.eeg_dataloader import set_dataloader as eeg_dataloader
+from ml.src.dataloader import set_dataloader, set_ml_dataloader
 from eeglibrary.src.eeg_dataset import EEGDataSet
 from eeglibrary.src.preprocessor import preprocess_args
 from eeglibrary import eeg
@@ -14,6 +15,7 @@ import json
 
 LABELS = {'none': 0, 'seiz': 1}
 PATIENTS = ['YJ0112PQ', 'MJ00803P', 'YJ0100DP', 'YJ0100E9', 'MJ00802S', 'YJ01133T', 'YJ0112AU', 'WJ01003H', 'WJ010024']
+DATALOADERS = {'normal': set_dataloader, 'eeg': eeg_dataloader, 'ml': set_ml_dataloader}
 
 
 def train_args(parser):
@@ -21,13 +23,14 @@ def train_args(parser):
     parser = preprocess_args(parser)
     expt_parser = parser.add_argument_group("Experiment arguments")
     expt_parser.add_argument('--expt-id', help='data file for training', default='')
+    expt_parser.add_argument('--dataloader-type', help='Dataloader type.', choices=['normal', 'eeg', 'ml'], default='eeg')
 
     return parser
 
 
 def label_func(path):
-    # return LABELS[path.split('/')[-1].replace('.pkl', '').split('_')[-1]]
-    return PATIENTS.index(path.split('/')[-2])
+    return LABELS[path.split('/')[-1].replace('.pkl', '').split('_')[-1]]
+    # return PATIENTS.index(path.split('/')[-2])
 
 
 def load_func(path):
@@ -37,13 +40,13 @@ def load_func(path):
 def experiment(train_conf) -> float:
 
     dataset_cls = EEGDataSet
-    set_dataloader_func = set_dataloader
+    set_dataloader_func = DATALOADERS[train_conf['dataloader_type']]
     expt_note = 'Test Patient\tAccuracy\tRecall\n'
 
     metrics = [
         Metric('loss', direction='minimize', save_model=True),
         Metric('accuracy', direction='maximize'),
-        # Metric('recall_1', direction='maximize'),
+        Metric('recall_1', direction='maximize'),
         # Metric('far', direction='minimize')
     ]
 
