@@ -166,10 +166,10 @@ class TrainManager:
 
             model_manager = AddaModelManager(orig_model, self.train_conf, dataloaders, deepcopy(self.metrics))
 
-            model_manager.train()
+            model = model_manager.train()
             _, _, test_metrics = model_manager.test(return_metrics=True, load_best=False)
 
-        return test_metrics, model_manager.model
+        return test_metrics, model
 
     def _update_data_paths(self, fold_count: int, k: int):
         # fold_count...k-foldのうちでいくつ目か
