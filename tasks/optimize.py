@@ -58,8 +58,8 @@ def objective(trial):
     TRAIN_CONF['class_names'] = list(set(LABELS.values()))
 
     TRAIN_CONF['iterations'] = trial.suggest_int('iterations', 10, 100)
-    TRAIN_CONF['k_disc'] = trial.suggest_int('iterations', 5, 30)
-    TRAIN_CONF['k_clf'] = trial.suggest_int('iterations', 5, 30)
+    TRAIN_CONF['k_disc'] = trial.suggest_int('k_disc', 5, 30)
+    TRAIN_CONF['k_clf'] = trial.suggest_int('k_clf', 5, 30)
 
     train_manager = TrainManager(TRAIN_CONF, load_func, label_func, dataset_cls, set_dataloader_func, metrics, expt_note)
     model, metrics = train_manager.train_test()
