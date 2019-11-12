@@ -66,7 +66,7 @@ def objective(trial):
     for phase, metrics in zip(['val', 'test'], [val_metrics, test_metrics]):
         for metric, value in metrics.items():
             trial.set_user_attr(f'{phase}_{metric}', value)
-    return val_metrics['loss']
+    return val_metrics['loss'].mean()
 
 
 def tuning() -> float:
@@ -74,6 +74,7 @@ def tuning() -> float:
     study = optuna.create_study()
     study.optimize(objective, n_trials=100)
     print(study.best_params)
+    study.trials_dataframe().to_csv('trials.csv')
 
 
 if __name__ == '__main__':
