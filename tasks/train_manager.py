@@ -61,7 +61,7 @@ class TrainManager:
                 data_df = pd.DataFrame()
                 for phase in PHASES:
                     path = Path(self.train_conf[f'{phase}_path'])
-                    manifest_name = f"{patient}_{phase}_{path.name.split('_')[2]}"
+                    manifest_name = f"{patient}_{phase}_manifest.csv"
                     if not (path.parent / manifest_name).is_file():
                         continue
                     data_df = pd.concat([data_df, pd.read_csv(path.parent / manifest_name, header=None)])
@@ -159,7 +159,7 @@ class TrainManager:
 
             # dataset, dataloaderの作成
             dataloaders = {}
-            for domain, phase in zip(['source', 'target'], ['train', 'val']):
+            for domain, phase in zip(['source', 'target', 'test'], ['train', 'val', 'test']):
                 dataset = self.dataset_cls(self.train_conf[f'{phase}_path'], self.train_conf, load_func=self.load_func,
                                            label_func=self.label_func)
                 dataloaders[domain] = set_adda_dataloader(dataset, self.train_conf)
@@ -167,6 +167,7 @@ class TrainManager:
             model_manager = AddaModelManager(orig_model, self.train_conf, dataloaders, deepcopy(self.metrics))
 
             model = model_manager.train()
+            model_manager.model.fitted = True
             _, _, test_metrics = model_manager.test(return_metrics=True, load_best=False)
 
         return test_metrics, model
@@ -188,7 +189,8 @@ class TrainManager:
     def _train_test_cv(self):
         orig_train_path = self.train_conf['train_path']
 
-        cv_metrics = {metric.name: np.zeros(self.train_conf['k_fold']) for metric in self.metrics}
+        val_cv_metrics = {metric.name: np.zeros(self.train_conf['k_fold']) for metric in self.metrics}
+        test_cv_metrics = {metric.name: np.zeros(self.train_conf['k_fold']) for metric in self.metrics}
 
         if self.train_conf['k_fold'] == 0:
             # データ全体で学習を行う
@@ -207,19 +209,20 @@ class TrainManager:
 
             print(f'Fold {i + 1} ended.')
             for metric in result_metrics:
-                cv_metrics[metric.name][i] = metric.average_meter['test'].best_score
+                val_cv_metrics[metric.name][i] = metric.average_meter['val'].best_score
+                test_cv_metrics[metric.name][i] = metric.average_meter['test'].best_score
                 # print(f"Metric {metric.name} best score: {metric.average_meter['val'].best_score}")
                 if metric.name in ['accuracy', 'recall_1']:
                     self.expt_note += f"\t{metric.average_meter['test'].best_score}"
             self.expt_note += '\n'
 
         [print(f'{i + 1} fold {metric_name} score\t mean: {meter.mean() :.4f}\t std: {meter.std() :.4f}') for
-         metric_name, meter in cv_metrics.items()]
+         metric_name, meter in test_cv_metrics.items()]
 
         # 新しく作成したマニフェストファイルは削除
         [Path(self.train_conf[f'{phase}_path']).unlink() for phase in PHASES]
 
-        return model, cv_metrics
+        return model, val_cv_metrics, test_cv_metrics
 
     def test(self, model_manager=None) -> List[Metric]:
         if not model_manager:

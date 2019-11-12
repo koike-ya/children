@@ -62,8 +62,11 @@ def objective(trial):
     TRAIN_CONF['k_clf'] = trial.suggest_int('k_clf', 5, 30)
 
     train_manager = TrainManager(TRAIN_CONF, load_func, label_func, dataset_cls, set_dataloader_func, metrics, expt_note)
-    model, metrics = train_manager.train_test()
-    return metrics['loss']
+    model, val_metrics, test_metrics = train_manager.train_test(val_metrics=True)
+    for phase, metrics in zip(['val', 'test'], [val_metrics, test_metrics]):
+        for metric, value in metrics.items():
+            trial.set_user_attr(f'{phase}_{metric}', value)
+    return val_metrics['loss']
 
 
 def tuning() -> float:
