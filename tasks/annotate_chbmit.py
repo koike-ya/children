@@ -54,7 +54,7 @@ def annotate_chbmit(data_dir, annotate_conf):
         use_path_list = []
 
         # データの形式に問題があるため使用しない
-        if patient_folder.name in ['chb04']:
+        if patient_folder.name in ['chb04', 'chb09', 'chb11', 'chb12', 'chb13', 'chb15', 'chb16', 'chb17', 'chb18', 'chb19', 'chb24']:
             continue
 
         nth_edf = -1
@@ -76,12 +76,18 @@ def annotate_chbmit(data_dir, annotate_conf):
             saved_list = data.split_and_save(window_size=window_size, n_jobs=annotate_conf['n_jobs'], padding=0,
                                              suffix='_none')
             del data
-            n_seizures = int(summary[nth_edf].split('\n')[3].split(': ')[-1])
+            print(summary[nth_edf])
+            try:
+                n_seizures = int(summary[nth_edf].split('\n')[3].split(': ')[-1])
+            except ValueError as e:
+                print(e)
+                print(patient_folder.name, 'passed')
+                continue
 
             remove_idx_list = []    # ラベルがまたがっているpklファイルの、saved_list内のindexを入れる
             for nth_seizure in range(n_seizures):
-                start_sec = int(summary[nth_edf].split('\n')[4 + nth_seizure * 2].split(' ')[3])
-                end_sec = int(summary[nth_edf].split('\n')[5 + nth_seizure * 2].split(' ')[3])
+                start_sec = int(summary[nth_edf].split('\n')[4 + nth_seizure * 2].split(': ')[-1].replace(' ', '').replace('seconds', ''))
+                end_sec = int(summary[nth_edf].split('\n')[5 + nth_seizure * 2].split(': ')[-1].replace(' ', '').replace('seconds', ''))
 
                 # start_secやend_secがwindow_sizeで割って余るとき、その区間はラベルがまたがっている
                 for sec in [start_sec, end_sec]:
@@ -107,7 +113,7 @@ def annotate_chbmit(data_dir, annotate_conf):
 
 
 if __name__ == '__main__':
-    data_dir = '/media/tomoya/3RD/chb-mit'
+    data_dir = '/media/cs11/Storage/koike/tmp/chb-mit-scalp-eeg-database-1.0.0/'
     parser = argparse.ArgumentParser(description='Annotation arguments')
     annotate_conf = vars(annotate_args(parser).parse_args())
     annotate_chbmit(data_dir, annotate_conf)
