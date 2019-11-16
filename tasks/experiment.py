@@ -65,16 +65,6 @@ def experiment(train_conf) -> float:
         f.write('\nParameters:\n')
         f.write(json.dumps(train_conf, indent=4))
 
-    # if train_conf['train_manifest'] == 'all':
-    #     for sub_name in subject_dir_names:
-    #         args = arrange_paths(args, sub_name)
-    #         train(args, class_names, label_func, metrics)
-    # elif args.inference:
-    #     pred_list, path_list = train(args, class_names, label_func, metrics)
-    #     voting(args, pred_list, path_list)
-    # else:
-    #     train(args, class_names, label_func, metrics)
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='train arguments')

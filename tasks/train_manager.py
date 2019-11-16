@@ -152,10 +152,10 @@ class TrainManager:
 
         return test_metrics, model_manager.model
 
-    def _train_test_adda(self, whole_epoch=5):
+    def _train_test_adda(self, whole_epoch=1):
         orig_model = None
         for epoch in range(whole_epoch):
-            orig_test_metrics, orig_model = self._train_test(orig_model)
+            orig_metrics, orig_model = self._train_test(orig_model)
 
             # dataset, dataloaderの作成
             dataloaders = {}
@@ -164,13 +164,13 @@ class TrainManager:
                                            label_func=self.label_func)
                 dataloaders[domain] = set_adda_dataloader(dataset, self.train_conf)
 
-            model_manager = AddaModelManager(orig_model, self.train_conf, dataloaders, deepcopy(self.metrics))
+            model_manager = AddaModelManager(orig_model, self.train_conf, dataloaders, deepcopy(orig_metrics))
 
             model = model_manager.train()
             model_manager.model.fitted = True
-            _, _, test_metrics = model_manager.test(return_metrics=True, load_best=False)
+            _, _, metrics = model_manager.test(return_metrics=True, load_best=False)
 
-        return test_metrics, model
+        return metrics, model
 
     def _update_data_paths(self, fold_count: int, k: int):
         # fold_count...k-foldのうちでいくつ目か
