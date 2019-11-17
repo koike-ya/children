@@ -1,30 +1,18 @@
-from datetime import datetime as dt
-from pathlib import Path
+import argparse
 import os
+from pathlib import Path
 
 import pandas as pd
-import numpy as np
 import pyedflib
-from tqdm import tqdm
-from joblib import Parallel, delayed
-
 from eeglibrary.src import EEG
+from tqdm import tqdm
 
-import argparse
-
-LABEL_COLUMNS = ['id', 'number', 'initial', 'date', 'start_time', 'end_time', 'abstruct', 'detail', 'label']
-LABEL_KIND = ['none', 'seiz']
-PHASES = ['train', 'val', 'test']
-CHANNELS = ['Fp1', 'Fp2', 'O1', 'O2']
-BASE_CHANNELS = ['A1', 'A2']
+from src.const import CHBMIT_PATIENTS
 
 
 def annotate_args(parser):
     annotate_parser = parser.add_argument_group('annotation arguments')
-    annotate_parser.add_argument('--include-artifact', action='store_true', help='Weather to include artifact or not')
     annotate_parser.add_argument('--n-jobs', type=int, default=4, help='Number of CPUs to use to annotate')
-    annotate_parser.add_argument('--train-size', type=float, default=0.6, help='Train size')
-    annotate_parser.add_argument('--val-size', type=float, default=0.2, help='Validation size')
 
     return parser
 
@@ -46,18 +34,15 @@ def annotate_chbmit(data_dir, annotate_conf):
     window_size = 10
 
     for patient_folder in Path(data_dir).iterdir():
-        if not (patient_folder.is_dir() and patient_folder.name.startswith('chb')):
+        if not (patient_folder.is_dir() and patient_folder.name in CHBMIT_PATIENTS):
             continue
 
         with open(str(patient_folder / f'{patient_folder.name}-summary.txt'), 'r') as f:
             summary = f.read().split('\n\n')[2:]
         use_path_list = []
 
-        # データの形式に問題があるため使用しない
-        if patient_folder.name in ['chb04', 'chb09', 'chb11', 'chb12', 'chb13', 'chb15', 'chb16', 'chb17', 'chb18', 'chb19', 'chb24']:
-            continue
-
         nth_edf = -1
+        # +記号はついてないものより前に来るので、アンダーバーで置換してソートしたあと戻す 16+.edf, 16.edf -> 16.edf, 16+.edf
         edf_path_list = [str(path).replace('+', '__') for path in patient_folder.iterdir() if path.suffix == '.edf']
         edf_path_list.sort()
         edf_path_list = [Path(path.replace('__', '+')) for path in edf_path_list]
@@ -74,16 +59,10 @@ def annotate_chbmit(data_dir, annotate_conf):
 
             # 先に保存してメモリエラーを回避して、ファイル名にだけ操作を加えてアノテーションする
             saved_list = data.split_and_save(window_size=window_size, n_jobs=annotate_conf['n_jobs'], padding=0,
-                                             suffix='_none')
+                                             save_dir=save_dir, suffix='_none')
             del data
-            print(summary[nth_edf])
-            try:
-                n_seizures = int(summary[nth_edf].split('\n')[3].split(': ')[-1])
-            except ValueError as e:
-                print(e)
-                print(patient_folder.name, 'passed')
-                continue
 
+            n_seizures = int(summary[nth_edf].split('\n')[3].split(': ')[-1])
             remove_idx_list = []    # ラベルがまたがっているpklファイルの、saved_list内のindexを入れる
             for nth_seizure in range(n_seizures):
                 start_sec = int(summary[nth_edf].split('\n')[4 + nth_seizure * 2].split(': ')[-1].replace(' ', '').replace('seconds', ''))
@@ -113,7 +92,7 @@ def annotate_chbmit(data_dir, annotate_conf):
 
 
 if __name__ == '__main__':
-    data_dir = '/media/cs11/Storage/koike/tmp/chb-mit-scalp-eeg-database-1.0.0/'
+    data_dir = '/media/tomoya/3RD/chb-mit/'
     parser = argparse.ArgumentParser(description='Annotation arguments')
     annotate_conf = vars(annotate_args(parser).parse_args())
     annotate_chbmit(data_dir, annotate_conf)

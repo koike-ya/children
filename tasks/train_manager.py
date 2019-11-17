@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from typing import List
 from pathlib import Path
+from collections import OrderedDict
 
 from copy import deepcopy
 from ml.src.metrics import Metric
@@ -10,11 +11,9 @@ from ml.src.dataloader import set_adda_dataloader
 from ml.models.adda_model_manager import AddaModelManager
 from ml.models.keras_model_manager import KerasModelManager
 import torch
-
-LABELS = {'none': 0, 'seiz': 1, 'arti': 2}
-PHASES = ['train', 'val', 'test']
-# 'MJ01128Z'は正例がないため除去
-PATIENTS = ['YJ0112PQ', 'MJ00803P', 'YJ0100DP', 'YJ0100E9', 'MJ00802S', 'YJ01133T', 'YJ0112AU', 'WJ01003H', 'WJ010024']
+from src.const import LABELS, PHASES
+from src.const import CHILDREN_PATIENTS
+from src.const import CHBMIT_PATIENTS
 
 
 def train_manager_args(parser):
@@ -27,6 +26,8 @@ def train_manager_args(parser):
     train_parser.add_argument('--test', action='store_true', help='Do testing, You should be specify k-fold with 1.')
     train_parser.add_argument('--infer', action='store_true', help='Do inference with test_path data,')
     train_parser.add_argument('--adda', action='store_true', help='Adversarial discriminative domain adaptation or not.')
+    train_parser.add_argument('--data-type', default='children', choices=['children', 'chbmit'])
+    train_parser.add_argument('--manifest-path', help='data file for training', default='input/train.csv')
     train_parser.add_argument('--model-manager', default='pytorch')
     parser = model_manager_args(parser)
 
@@ -50,14 +51,13 @@ class TrainManager:
         self.set_dataloader_func = set_dataloader_func
         self.metrics = metrics
         self.expt_note = expt_note
-        self.is_manifest = 'manifest' in self.train_conf['train_path']
         self.data_dfs = self._set_data_dfs()
 
     def _set_data_dfs(self):
-        data_dfs = {}
+        data_dfs = OrderedDict()
 
-        if self.is_manifest:
-            for patient in PATIENTS:
+        if self.train_conf['data_type'] == 'children':
+            for patient in CHILDREN_PATIENTS:
                 data_df = pd.DataFrame()
                 for phase in PHASES:
                     path = Path(self.train_conf[f'{phase}_path'])
@@ -67,13 +67,19 @@ class TrainManager:
                     data_df = pd.concat([data_df, pd.read_csv(path.parent / manifest_name, header=None)])
                 if not data_df.empty:
                     data_dfs[patient] = data_df
+
+        elif self.train_conf['data_type'] == 'chbmit':
+            path = Path(self.train_conf['manifest_path'])
+            for patient in CHBMIT_PATIENTS:
+                if (path.parent.parent / patient / 'manifest.csv').is_file():
+                    data_dfs[patient] = pd.read_csv(path.parent.parent / patient / 'manifest.csv', header=None)
+
         else:
             raise NotImplementedError
             # for patient in PATIENTS:
             #     for phase in PHASES:
             #         path = self.train_conf[f'{phase}_path']
             #         data_df = pd.concat([data_df, pd.read_csv(path, header=None)])
-
         return data_dfs
 
     def _init_model_manager(self, dataloaders):
@@ -116,16 +122,17 @@ class TrainManager:
         return train_path_df, val_path_df, test_path_df
 
     def _patient_one_out_cv(self, fold_count, k):
-        n_patients_to_test = len(PATIENTS) // k
-        assert float(n_patients_to_test) == len(PATIENTS) / k
+        patients = list(self.data_dfs.keys())
+        n_patients_to_test = len(patients) // k
+        assert float(n_patients_to_test) == len(patients) / k
         
-        test_patients = PATIENTS[fold_count * n_patients_to_test:(fold_count + 1) * n_patients_to_test]
+        test_patients = patients[fold_count * n_patients_to_test:(fold_count + 1) * n_patients_to_test]
         print(f'{test_patients} will be used as test patients')
         self.expt_note += f'{test_patients}'
         test_path_df = [self.data_dfs[patient] for patient in test_patients]
         test_path_df = pd.concat(test_path_df, axis=0, sort=False)
 
-        train_val_patients = [patient for patient in PATIENTS if patient not in test_patients]
+        train_val_patients = [patient for patient in patients if patient not in test_patients]
         val_start_idx = (fold_count % (k - 1)) * n_patients_to_test
         val_patients = train_val_patients[val_start_idx:val_start_idx + n_patients_to_test]
         print(f'{val_patients} will be used as validation patients')
@@ -181,7 +188,11 @@ class TrainManager:
             train_path_df, val_path_df, test_path_df = self._patient_one_out_cv(fold_count, k)
 
         for phase in PHASES:
-            file_name = self.train_conf[f'{phase}_path'][:-4].replace('_fold', '') + '_fold.csv'
+            if self.train_conf['data_type'] == 'children':
+                file_name = self.train_conf[f'{phase}_path'][:-4].replace('_fold', '') + '_fold.csv'
+            elif self.train_conf['data_type'] == 'chbmit':
+                file_name = Path(self.train_conf['manifest_path']).parent.parent / f'{phase}_path_fold.csv'
+
             locals()[f'{phase}_path_df'].to_csv(file_name, index=False, header=None)
             self.train_conf[f'{phase}_path'] = file_name
             print(f'{phase} data:\n', locals()[f'{phase}_path_df'][0].apply(self.label_func).value_counts())
