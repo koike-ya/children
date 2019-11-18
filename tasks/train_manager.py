@@ -104,16 +104,14 @@ class TrainManager:
         all_labels = data_dfs.squeeze().apply(lambda x: self.label_func(x))
 
         self.data_dfs = {}
-        for class_ in self.train_conf['class_names']:
+        for class_ in [0, 1, 2]:
             self.data_dfs[class_] = data_dfs[all_labels == class_]
 
         # preictalを選ぶ
-        ictals_idxs = [0] + list(self.data_dfs[2].index) + [1000000]
-        preictal_start_idxs = [0] + [ictals_idxs[i] + 1 for i in range(1, len(ictals_idxs) - 1) if
-                                     ictals_idxs[i + 1] - ictals_idxs[i] > 1]
-        preictal_end_idxs = [ictals_idxs[i] for i in range(len(ictals_idxs) - 1) if
-                             ictals_idxs[i] - ictals_idxs[i - 1] > 1] + [1000000]
-        leave_out_preictal = self.data_dfs[1].loc[preictal_start_idxs[fold_count + 1]:preictal_end_idxs[fold_count + 1], :]
+        ictal_start_series = data_dfs[all_labels == 2][0].apply(lambda x: int(x.split('/')[-1].split('_')[-3]))
+        preictal_start_idxs = [0] + list(ictal_start_series[ictal_start_series - ictal_start_series.shift(1) != 256].index)
+        leave_out_preictal = self.data_dfs[1].loc[preictal_start_idxs[fold_count]:preictal_start_idxs[fold_count + 1], :]
+        assert not leave_out_preictal.empty
 
         # interictalを選ぶ
         length = len(self.data_dfs[0]) // k
@@ -233,14 +231,11 @@ class TrainManager:
                 file_name = Path(self.train_conf['manifest_path']).parent.parent / f'{phase}_path_fold.csv'
 
             locals()[f'{phase}_path_df'].to_csv(file_name, index=False, header=None)
-            self.train_conf[f'{phase}_path'] = file_name
+            self.train_conf[f'{phase}_path'] = str(file_name)
             print(f'{phase} data:\n', locals()[f'{phase}_path_df'][0].apply(self.label_func).value_counts())
 
     def _train_test_cv(self):
         orig_train_path = self.train_conf['train_path']
-
-        val_cv_metrics = {metric.name: np.zeros(self.train_conf['k_fold']) for metric in self.metrics}
-        test_cv_metrics = {metric.name: np.zeros(self.train_conf['k_fold']) for metric in self.metrics}
 
         if Path(self.train_conf['model_path']).is_file():
             Path(self.train_conf['model_path']).unlink()
@@ -253,14 +248,14 @@ class TrainManager:
             self.train_conf['cv_type'] = 'ictal'
             data_dfs = pd.concat(list(self.data_dfs.values()), axis=0)
             all_labels = data_dfs.squeeze().apply(lambda x: self.label_func(x))
-            ictals_idxs = list(data_dfs[all_labels == 2].index) + [1000000]
-            self.train_conf['k_fold'] = len([i for i in range(len(ictals_idxs) - 1) if ictals_idxs[i + 1] - ictals_idxs[i] > 1])
+            ictal_start_series = data_dfs[all_labels == 2][0].apply(lambda x: int(x.split('/')[-1].split('_')[-3]))
+            self.train_conf['k_fold'] = ictal_start_series[ictal_start_series - ictal_start_series.shift(1) != 256].shape[0]
+
+        val_cv_metrics = {metric.name: np.zeros(self.train_conf['k_fold']) for metric in self.metrics}
+        test_cv_metrics = {metric.name: np.zeros(self.train_conf['k_fold']) for metric in self.metrics}
 
         for i in range(self.train_conf['k_fold']):
             self._update_data_paths(i, self.train_conf['k_fold'])
-
-            if self.train_conf['reproduce'] == 'chbmit-cnn':
-                self.train_conf['class_names'] = [0, 1]
 
             if self.train_conf['adda']:
                 result_metrics, model = self._train_test_adda()

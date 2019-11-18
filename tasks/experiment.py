@@ -61,8 +61,11 @@ def experiment(train_conf) -> float:
     with open(Path(__file__).parent.parent / 'output' / expt_name, 'w') as f:
         f.write(f"experiment notes:\n{train_manager.expt_note}\n\n")
         f.write(f"{train_conf['k_fold']} fold results:\n")
-        for metric_name, meter in metrics.items():
-            f.write(f'{metric_name} score\t mean: {meter.mean() :.4f}\t std: {meter.std() :.4f}\n')
+        for phase in ['val', 'test']:
+            f.write(f"{phase} phase results:\n")
+            metrics = locals()[f'{phase}_metrics']
+            for metric_name, meter in metrics.items():
+                f.write(f'{metric_name} score\t mean: {meter.mean() :.4f}\t std: {meter.std() :.4f}\n')
         f.write('\nParameters:\n')
         f.write(json.dumps(train_conf, indent=4))
 
