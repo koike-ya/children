@@ -13,7 +13,7 @@ import torch
 import json
 
 
-LABELS = {'none': 0, 'seiz': 1}
+LABELS = {'interictal': 0, 'preictal': 1, 'ictal': 2}
 PATIENTS = ['YJ0112PQ', 'MJ00803P', 'YJ0100DP', 'YJ0100E9', 'MJ00802S', 'YJ01133T', 'YJ0112AU', 'WJ01003H', 'WJ010024']
 DATALOADERS = {'normal': set_dataloader, 'eeg': eeg_dataloader, 'ml': set_ml_dataloader}
 
@@ -47,13 +47,14 @@ def experiment(train_conf) -> float:
         Metric('loss', direction='minimize', save_model=True),
         Metric('accuracy', direction='maximize'),
         Metric('recall_1', direction='maximize'),
-        # Metric('far', direction='minimize')
+        Metric('far', direction='minimize')
     ]
 
-    train_conf['class_names'] = list(set(LABELS.values()))
+    # train_conf['class_names'] = list(set(LABELS.values()))
+    train_conf['class_names'] = [0, 1]
     train_manager = TrainManager(train_conf, load_func, label_func, dataset_cls, set_dataloader_func, metrics, expt_note)
 
-    model, metrics = train_manager.train_test()
+    model, val_metrics, test_metrics = train_manager.train_test()
 
     now_time = datetime.today().strftime('%y%m%H%M')
     expt_name = f"{len(train_conf['class_names'])}-class_{train_conf['model_type']}_{train_conf['expt_id']}_{now_time}.txt"

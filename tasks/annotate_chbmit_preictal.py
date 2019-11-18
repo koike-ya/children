@@ -48,7 +48,7 @@ class EDF:
 
     def save_labels(self, save_dir, window_size, n_jobs):
         saved_list = []
-        for label in ['interictal', 'preictal', 'ictal']:
+        for label, window_size in zip(['interictal', 'preictal', 'ictal'], [window_size, window_size, 1]):
             time_list = getattr(self, f'{label}_time_list')
             eeg = load_edf(self.file_path)
             for section in time_list:
@@ -150,7 +150,7 @@ def annotate_chbmit(data_dir, annotate_conf):
     SPH(seizure )...alertからSOPの開始までの時間幅(分)。preictalとictalの間の時間幅に対応する。
     preictalの時間はictal_start - (SOP + SPH) から ictal_start - SPH までである。
     """
-    window_size = 10
+    window_size = 30
 
     for patient_folder in Path(data_dir).iterdir():
         if not (patient_folder.is_dir() and patient_folder.name in CHBMIT_PATIENTS):
@@ -223,7 +223,7 @@ def annotate_chbmit(data_dir, annotate_conf):
 
         # 各edfファイルについて、各ラベルの時間帯があればそれを保存する
         saved_path_list = []
-        for i, edf in enumerate(edf_list):
+        for edf in tqdm(edf_list):
             save_dir = edf.file_path.parent / 'interictal_preictal' / edf.file_path.name[:-4]
             save_dir.mkdir(exist_ok=True, parents=True)
             saved_path_list.extend(edf.save_labels(save_dir, window_size, annotate_conf['n_jobs']))
@@ -231,6 +231,7 @@ def annotate_chbmit(data_dir, annotate_conf):
         print(save_dir.parent.name)
         print(pd.Series(saved_path_list).apply(lambda x: x.split('/')[-1].replace('.pkl', '').split('_')[-1]).value_counts())
         pd.DataFrame(saved_path_list).to_csv(save_dir.parent / 'manifest.csv', header=None, index=False)
+        exit()
 
 
 if __name__ == '__main__':

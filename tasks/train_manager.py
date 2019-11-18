@@ -30,6 +30,7 @@ def train_manager_args(parser):
     train_parser.add_argument('--adda', action='store_true', help='Adversarial discriminative domain adaptation or not.')
     train_parser.add_argument('--data-type', default='children', choices=['children', 'chbmit'])
     train_parser.add_argument('--manifest-path', help='data file for training', default='input/train.csv')
+    train_parser.add_argument('--only-one-patient', help='Only one patient ', action='store_true')
     train_parser.add_argument('--model-manager', default='pytorch')
     parser = model_manager_args(parser)
 
@@ -71,10 +72,11 @@ class TrainManager:
                     data_dfs[patient] = data_df
 
         elif self.train_conf['data_type'] == 'chbmit':
+            patients = [Path(self.train_conf[f'manifest_path']).parent.parent.name] if self.train_conf['only_one_patient'] else CHBMIT_PATIENTS
             path = Path(self.train_conf['manifest_path'])
-            for patient in CHBMIT_PATIENTS:
-                if (path.parent.parent / patient / 'interictal_preictal' / 'manifest.csv').is_file():
-                    data_dfs[patient] = pd.read_csv(path.parent.parent / patient / 'interictal_preictal' / 'manifest.csv', header=None)
+            for patient in patients:
+                if (path.parents[2] / patient / 'interictal_preictal' / 'manifest.csv').is_file():
+                    data_dfs[patient] = pd.read_csv(path.parents[2] / patient / 'interictal_preictal' / 'manifest.csv', header=None)
 
         else:
             raise NotImplementedError
@@ -97,6 +99,39 @@ class TrainManager:
 
         return model_manager
 
+    def _ictal_one_out_cv(self, fold_count, k):
+        data_dfs = pd.concat(list(self.data_dfs.values()), axis=0)
+        all_labels = data_dfs.squeeze().apply(lambda x: self.label_func(x))
+
+        self.data_dfs = {}
+        for class_ in self.train_conf['class_names']:
+            self.data_dfs[class_] = data_dfs[all_labels == class_]
+
+        # preictalを選ぶ
+        ictals_idxs = [0] + list(self.data_dfs[2].index) + [1000000]
+        preictal_start_idxs = [0] + [ictals_idxs[i] + 1 for i in range(1, len(ictals_idxs) - 1) if
+                                     ictals_idxs[i + 1] - ictals_idxs[i] > 1]
+        preictal_end_idxs = [ictals_idxs[i] for i in range(len(ictals_idxs) - 1) if
+                             ictals_idxs[i] - ictals_idxs[i - 1] > 1] + [1000000]
+        leave_out_preictal = self.data_dfs[1].loc[preictal_start_idxs[fold_count + 1]:preictal_end_idxs[fold_count + 1], :]
+
+        # interictalを選ぶ
+        length = len(self.data_dfs[0]) // k
+        start_index = fold_count * length
+        leave_out_interictal = self.data_dfs[0].reset_index(drop=True).iloc[start_index:start_index + length, :]
+
+        test_path_df = pd.concat([leave_out_preictal, leave_out_interictal]).reset_index(drop=True)
+
+        train_val_pre = self.data_dfs[1][~self.data_dfs[1].index.isin(leave_out_preictal.index)].reset_index(drop=True)
+        train_val_inte = self.data_dfs[0][~self.data_dfs[0].index.isin(leave_out_interictal.index)].reset_index(drop=True)
+
+        train_path_df = pd.concat([train_val_pre.iloc[:len(train_val_pre) * 3 // 4, :],
+                                   train_val_inte.iloc[:len(train_val_inte) * 3 // 4, :]]).reset_index(drop=True)
+        val_path_df = pd.concat([train_val_pre.iloc[len(train_val_pre) * 3 // 4:, :],
+                                   train_val_inte.iloc[len(train_val_inte) * 3 // 4:, :]]).reset_index(drop=True)
+
+        return train_path_df, val_path_df, test_path_df
+
     def _normal_cv(self, fold_count, k):
         data_dfs = pd.concat(list(self.data_dfs.values()), axis=0)
         all_labels = data_dfs.squeeze().apply(lambda x: self.label_func(x))
@@ -109,7 +144,7 @@ class TrainManager:
         val_path_df = pd.DataFrame()
         train_path_df = pd.DataFrame()
         for class_, label_df in self.data_dfs.items():
-            one_phase_length = len(label_df) // self.train_conf['k_fold']
+            one_phase_length = len(label_df) // k
             start_index = fold_count * one_phase_length
             leave_out = label_df.iloc[start_index:start_index + one_phase_length, :]
             test_path_df = pd.concat([test_path_df, leave_out]).reset_index(drop=True)
@@ -188,6 +223,8 @@ class TrainManager:
             train_path_df, val_path_df, test_path_df = self._normal_cv(fold_count, k)
         elif self.train_conf['cv_type'] == 'patient':
             train_path_df, val_path_df, test_path_df = self._patient_one_out_cv(fold_count, k)
+        elif self.train_conf['cv_type'] == 'ictal':
+            train_path_df, val_path_df, test_path_df = self._ictal_one_out_cv(fold_count, k)
 
         for phase in PHASES:
             if self.train_conf['data_type'] == 'children':
@@ -205,15 +242,25 @@ class TrainManager:
         val_cv_metrics = {metric.name: np.zeros(self.train_conf['k_fold']) for metric in self.metrics}
         test_cv_metrics = {metric.name: np.zeros(self.train_conf['k_fold']) for metric in self.metrics}
 
+        if Path(self.train_conf['model_path']).is_file():
+            Path(self.train_conf['model_path']).unlink()
+
         if self.train_conf['k_fold'] == 0:
             # データ全体で学習を行う
             raise NotImplementedError
 
-        for i in range(self.train_conf['k_fold']):
-            if Path(self.train_conf['model_path']).is_file():
-                Path(self.train_conf['model_path']).unlink()
+        if self.train_conf['reproduce'] == 'chbmit-cnn':
+            self.train_conf['cv_type'] = 'ictal'
+            data_dfs = pd.concat(list(self.data_dfs.values()), axis=0)
+            all_labels = data_dfs.squeeze().apply(lambda x: self.label_func(x))
+            ictals_idxs = list(data_dfs[all_labels == 2].index) + [1000000]
+            self.train_conf['k_fold'] = len([i for i in range(len(ictals_idxs) - 1) if ictals_idxs[i + 1] - ictals_idxs[i] > 1])
 
+        for i in range(self.train_conf['k_fold']):
             self._update_data_paths(i, self.train_conf['k_fold'])
+
+            if self.train_conf['reproduce'] == 'chbmit-cnn':
+                self.train_conf['class_names'] = [0, 1]
 
             if self.train_conf['adda']:
                 result_metrics, model = self._train_test_adda()

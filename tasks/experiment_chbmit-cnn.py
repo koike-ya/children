@@ -5,16 +5,18 @@ from eeglibrary.src.eeg_dataloader import set_dataloader
 from eeglibrary.src.eeg_dataset import EEGDataSet
 from eeglibrary.src.preprocessor import preprocess_args
 from eeglibrary.src.eeg import EEG
-from ml.tasks.train_manager import TrainManager, train_manager_args
+from train_manager import TrainManager, train_manager_args
 import torch
 
 
-LABELS = {'none': 0, 'seiz': 1}
+LABELS = {'interictal': 0, 'preictal': 1, 'ictal': 2}
 
 
 def train_args(parser):
     parser = train_manager_args(parser)
     parser = preprocess_args(parser)
+    expt_parser = parser.add_argument_group("Experiment arguments")
+    expt_parser.add_argument('--reproduce', help='Method name for reproduction', default='')
 
     return parser
 
@@ -31,6 +33,7 @@ def experiment(train_conf) -> float:
 
     dataset_cls = EEGDataSet
     set_dataloader_func = set_dataloader
+    expt_note = 'Test Patient\tAccuracy\tRecall\n'
 
     metrics = [
         Metric('loss', direction='minimize'),
@@ -39,8 +42,9 @@ def experiment(train_conf) -> float:
         Metric('far', direction='minimize')
     ]
 
-    train_conf['class_names'] = list(LABELS.values())
-    train_manager = TrainManager(train_conf, load_func, label_func, dataset_cls, set_dataloader_func, metrics)
+    train_conf['class_names'] = [0, 1, 2]
+    train_conf['model_manager'] = 'keras'
+    train_manager = TrainManager(train_conf, load_func, label_func, dataset_cls, set_dataloader_func, metrics, expt_note)
 
     train_manager.train_test()
 
