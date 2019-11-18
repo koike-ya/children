@@ -133,8 +133,9 @@ def calc_allowed_preictal_time_list(edf_list, ictal_section_list):
     for i, ictal_section in enumerate(ictal_section_list):
         prev_ictal_section = {'end': edf_list[0].start} if i == 0 else ictal_section_list[i - 1]
 
-        if ictal_section['start'] - prev_ictal_section['end'] > timedelta(minutes=SOP + SPH):
-            allowed_preictal_time_list.append({'start': ictal_section['start'] - timedelta(minutes=SOP + SPH),
+        if ictal_section['start'] - prev_ictal_section['end'] > timedelta(minutes=SPH):
+            duration = min((ictal_section['start'] - prev_ictal_section['end']).seconds, SOP * 60)
+            allowed_preictal_time_list.append({'start': ictal_section['start'] - timedelta(seconds=duration + SPH * 60),
                                                'end': ictal_section['start'] - timedelta(minutes=SPH)})
     return allowed_preictal_time_list
 
@@ -178,6 +179,7 @@ def annotate_chbmit(data_dir, annotate_conf):
                 start_sec = int(
                     summary[nth_edf].split('\n')[4 + nth_seizure * 2].split(': ')[-1].replace(' ', '').replace(
                         'seconds', ''))
+                # assert start_sec != 0
                 end_sec = int(
                     summary[nth_edf].split('\n')[5 + nth_seizure * 2].split(': ')[-1].replace(' ', '').replace(
                         'seconds', ''))
@@ -185,6 +187,7 @@ def annotate_chbmit(data_dir, annotate_conf):
                 ictal_section_list.append(edf.ictal_time_list[-1])
 
             edf_list.append(edf)
+        # continue
 
         # 日付が順番に増えていくように変更
         edf_list = modify_date(edf_list)
