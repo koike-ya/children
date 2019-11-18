@@ -9,6 +9,8 @@ from tqdm import tqdm
 from datetime import datetime as dt, timedelta
 from copy import deepcopy
 
+import sys
+sys.path.append('..')
 from src.const import CHBMIT_PATIENTS
 
 
@@ -173,8 +175,12 @@ def annotate_chbmit(data_dir, annotate_conf):
             edf = EDF(file_path, start, end, n_seizures)
 
             for nth_seizure in range(n_seizures):
-                start_sec = int(edf_info[4 + nth_seizure * 2].split(' ')[3])
-                end_sec = int(edf_info[5 + nth_seizure * 2].split(' ')[3])
+                start_sec = int(
+                    summary[nth_edf].split('\n')[4 + nth_seizure * 2].split(': ')[-1].replace(' ', '').replace(
+                        'seconds', ''))
+                end_sec = int(
+                    summary[nth_edf].split('\n')[5 + nth_seizure * 2].split(': ')[-1].replace(' ', '').replace(
+                        'seconds', ''))
                 edf.add_ictal_section(start_sec, end_sec)
                 ictal_section_list.append(edf.ictal_time_list[-1])
 
@@ -218,7 +224,7 @@ def annotate_chbmit(data_dir, annotate_conf):
         # 各edfファイルについて、各ラベルの時間帯があればそれを保存する
         saved_path_list = []
         for i, edf in enumerate(edf_list):
-            save_dir = edf.file_path.parent / 'preictal' / edf.file_path.name[:-4]
+            save_dir = edf.file_path.parent / 'interictal_preictal' / edf.file_path.name[:-4]
             save_dir.mkdir(exist_ok=True, parents=True)
             saved_path_list.extend(edf.save_labels(save_dir, window_size, annotate_conf['n_jobs']))
 

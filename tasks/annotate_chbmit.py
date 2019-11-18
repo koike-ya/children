@@ -7,6 +7,8 @@ import pyedflib
 from eeglibrary.src import EEG
 from tqdm import tqdm
 
+import sys
+sys.path.append('..')
 from src.const import CHBMIT_PATIENTS
 
 
@@ -49,8 +51,8 @@ def annotate_chbmit(data_dir, annotate_conf):
         for edf_path in tqdm(edf_path_list, disable=False):
             nth_edf += 1
 
-            save_dir = patient_folder / f'{edf_path.name[:-4]}'
-            save_dir.mkdir(exist_ok=True)
+            save_dir = patient_folder / 'ictal_or_not' / f'{edf_path.name[:-4]}'
+            save_dir.mkdir(exist_ok=True, parents=True)
 
             data = load_edf(str(edf_path))
             assert data.sr == 256
@@ -88,7 +90,7 @@ def annotate_chbmit(data_dir, annotate_conf):
 
             use_path_list.extend(saved_list)
 
-        pd.DataFrame(use_path_list).to_csv(save_dir.parent / 'manifest.csv', index=False, header=None)
+        pd.DataFrame(use_path_list).to_csv(patient_folder / 'ictal_or_not' / 'manifest.csv', index=False, header=None)
 
 
 if __name__ == '__main__':

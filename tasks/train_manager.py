@@ -11,6 +11,8 @@ from ml.src.dataloader import set_adda_dataloader
 from ml.models.adda_model_manager import AddaModelManager
 from ml.models.keras_model_manager import KerasModelManager
 import torch
+import sys
+sys.path.append('..')
 from src.const import LABELS, PHASES
 from src.const import CHILDREN_PATIENTS
 from src.const import CHBMIT_PATIENTS
@@ -71,8 +73,8 @@ class TrainManager:
         elif self.train_conf['data_type'] == 'chbmit':
             path = Path(self.train_conf['manifest_path'])
             for patient in CHBMIT_PATIENTS:
-                if (path.parent.parent / patient / 'manifest.csv').is_file():
-                    data_dfs[patient] = pd.read_csv(path.parent.parent / patient / 'manifest.csv', header=None)
+                if (path.parent.parent / patient / 'interictal_preictal' / 'manifest.csv').is_file():
+                    data_dfs[patient] = pd.read_csv(path.parent.parent / patient / 'interictal_preictal' / 'manifest.csv', header=None)
 
         else:
             raise NotImplementedError

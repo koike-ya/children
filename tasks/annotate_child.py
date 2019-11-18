@@ -135,8 +135,8 @@ def annotate_child(excel_path, annotate_conf):
     for i, pat_info in label_info.iterrows():
 
         (data_dir / pat_info['id']).mkdir(exist_ok=True)
-        # if pat_info['id'] != 'MJ00802S':
-        #     continue
+        if pat_info['id'] != 'MJ00802S':
+            continue
 
         data = load_edf(f"{data_dir}/{pat_info['id']}{file_suffix}")
         sr = data.sr
@@ -189,9 +189,8 @@ def annotate_child(excel_path, annotate_conf):
 
 
 if __name__ == '__main__':
-    excel_path = '/media/tomoya/SSD-PGU3/research/brain/children/eeg_annotation.xlsx'
+    excel_path = '/home/tomoya/workspace/research/brain/children/input/eeg_annotation.xlsx'
     parser = argparse.ArgumentParser(description='Annotation arguments')
     annotate_conf = vars(annotate_args(parser).parse_args())
-    # annotate_child(excel_path, annotate_conf)
+    annotate_child(excel_path, annotate_conf)
     # make_edf_summary(excel_path)
-    make_inter_patient_manifest(annotate_conf)
