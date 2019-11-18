@@ -179,7 +179,7 @@ def annotate_chbmit(data_dir, annotate_conf):
                 start_sec = int(
                     summary[nth_edf].split('\n')[4 + nth_seizure * 2].split(': ')[-1].replace(' ', '').replace(
                         'seconds', ''))
-                # assert start_sec != 0
+                assert start_sec != 0
                 end_sec = int(
                     summary[nth_edf].split('\n')[5 + nth_seizure * 2].split(': ')[-1].replace(' ', '').replace(
                         'seconds', ''))
@@ -187,7 +187,6 @@ def annotate_chbmit(data_dir, annotate_conf):
                 ictal_section_list.append(edf.ictal_time_list[-1])
 
             edf_list.append(edf)
-        # continue
 
         # 日付が順番に増えていくように変更
         edf_list = modify_date(edf_list)
@@ -234,7 +233,7 @@ def annotate_chbmit(data_dir, annotate_conf):
         print(save_dir.parent.name)
         print(pd.Series(saved_path_list).apply(lambda x: x.split('/')[-1].replace('.pkl', '').split('_')[-1]).value_counts())
         pd.DataFrame(saved_path_list).to_csv(save_dir.parent / 'manifest.csv', header=None, index=False)
-        exit()
+        # exit()
 
 
 if __name__ == '__main__':
