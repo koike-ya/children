@@ -46,7 +46,7 @@ class EDF:
         end_index = int((section['end'] - self.start).total_seconds()) * SR
         return start_index, end_index
 
-    def save_labels(self, save_dir, window_size, n_jobs):
+    def save_labels(self, save_dir, window_size, window_stride, n_jobs):
         saved_list = []
         for label, window_size in zip(['interictal', 'preictal', 'ictal'], [window_size, window_size, 1]):
             time_list = getattr(self, f'{label}_time_list')
@@ -62,7 +62,8 @@ class EDF:
                 section_eeg.len_sec = (end_index - start_index) // SR
                 section_eeg.values = section_eeg.values[:, start_index:end_index]
                 saved_list.extend(section_eeg.split_and_save(window_size=window_size, n_jobs=n_jobs, padding=0,
-                                                             save_dir=save_dir, suffix=f'_{label}'))
+                                                             window_stride=window_stride, save_dir=save_dir,
+                                                             suffix=f'_{label}'))
         return saved_list
 
 
@@ -157,6 +158,7 @@ def annotate_chbmit(data_dir, annotate_conf):
     preictalの時間はictal_start - (SOP + SPH) から ictal_start - SPH までである。
     """
     window_size = 30
+    window_stride = 15
 
     for patient_folder in Path(data_dir).iterdir():
         if not (patient_folder.is_dir() and patient_folder.name in CHBMIT_PATIENTS):
@@ -233,7 +235,7 @@ def annotate_chbmit(data_dir, annotate_conf):
         for edf in tqdm(edf_list):
             save_dir = edf.file_path.parent / 'interictal_preictal' / edf.file_path.name[:-4]
             save_dir.mkdir(exist_ok=True, parents=True)
-            saved_path_list.extend(edf.save_labels(save_dir, window_size, annotate_conf['n_jobs']))
+            saved_path_list.extend(edf.save_labels(save_dir, window_size, window_stride, annotate_conf['n_jobs']))
 
         print(save_dir.parent.name)
         print(pd.Series(saved_path_list).apply(lambda x: x.split('/')[-1].replace('.pkl', '').split('_')[-1]).value_counts())
