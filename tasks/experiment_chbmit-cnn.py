@@ -50,19 +50,26 @@ def experiment(train_conf) -> float:
     train_conf['model_manager'] = 'keras'
     train_manager = TrainManager(train_conf, load_func, label_func, dataset_cls, set_dataloader_func, metrics, expt_note)
 
-    model, val_metrics, test_metrics = train_manager.train_test()
-    print(train_conf)
+    if not train_conf['only_test']:
+        model, val_metrics, test_metrics = train_manager.train_test()
+    else:
+        train_manager.test()
 
     now_time = datetime.today().strftime('%y%m%d%H%M')
     expt_name = f"{len(train_conf['class_names'])}-class_{train_conf['model_type']}_{train_conf['expt_id']}_{now_time}.txt"
     with open(Path(__file__).parent.parent / 'output' / expt_name, 'w') as f:
         f.write(f"experiment notes:\n{train_manager.expt_note}\n\n")
         f.write(f"{train_conf['k_fold']} fold results:\n")
+
         for phase in ['val', 'test']:
+            if f'{phase}_metrics' not in locals().keys():
+                continue
+
             f.write(f"{phase} phase results:\n")
             metrics = locals()[f'{phase}_metrics']
             for metric_name, meter in metrics.items():
                 f.write(f'{metric_name} score\t mean: {meter.mean() :.4f}\t std: {meter.std() :.4f}\n')
+
         f.write('\nParameters:\n')
         f.write(json.dumps(train_conf, indent=4))
 

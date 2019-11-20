@@ -54,7 +54,7 @@ class TrainManager:
         self.set_dataloader_func = set_dataloader_func
         self.metrics = metrics
         self.expt_note = expt_note
-        self.data_dfs = self._set_data_dfs()
+        self.data_dfs = pd.DataFrame()
 
     def _set_data_dfs(self):
         data_dfs = OrderedDict()
@@ -283,25 +283,23 @@ class TrainManager:
         if not model_manager:
             # dataset, dataloaderの作成
             dataloaders = {}
-            dataset = self.dataset_cls(self.train_conf[f'test_path'], self.train_conf, phase='test',
+            dataset = self.dataset_cls(self.train_conf[f'test_path'], self.train_conf,
                                        load_func=self.load_func, label_func=self.label_func)
             dataloaders['test'] = self.set_dataloader_func(dataset, 'test', self.train_conf)
 
             model_manager = self._init_model_manager(dataloaders)
 
-        return model_manager.test()
+        return model_manager.test(return_metrics=True)
 
     def train_test(self):
-        if not self.train_conf['only_test']:
-            return self._train_test_cv()
-        else:
-            self.test()
+        self.data_dfs = self._set_data_dfs()
+        return self._train_test_cv()
 
     def infer(self) -> np.array:
         phase = 'infer'
         # dataset, dataloaderの作成
         dataloaders = {}
-        dataset = self.dataset_cls(self.train_conf[f'test_path'], self.train_conf, phase=phase,
+        dataset = self.dataset_cls(self.train_conf[f'test_path'], self.train_conf,
                                    load_func=self.load_func, label_func=self.label_func)
         dataloaders[phase] = self.set_dataloader_func(dataset, phase, self.train_conf)
 
