@@ -50,7 +50,12 @@ class EDF:
         saved_list = []
         for label, window_size in zip(['interictal', 'preictal', 'ictal'], [window_size, window_size, 1]):
             time_list = getattr(self, f'{label}_time_list')
-            eeg = load_edf(self.file_path)
+            try:
+                eeg = load_edf(self.file_path)
+            except OSError as e:
+                print(e)
+                return []
+
             for section in time_list:
                 start_index, end_index = self._time_to_index(section)
                 section_eeg = deepcopy(eeg)
