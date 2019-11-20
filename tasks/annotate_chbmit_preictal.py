@@ -1,15 +1,14 @@
 import argparse
-import os
+import sys
+from copy import deepcopy
+from datetime import datetime as dt, timedelta
 from pathlib import Path
 
 import pandas as pd
 import pyedflib
 from eeglibrary.src import EEG
 from tqdm import tqdm
-from datetime import datetime as dt, timedelta
-from copy import deepcopy
 
-import sys
 sys.path.append('..')
 from src.const import CHBMIT_PATIENTS
 
@@ -49,7 +48,7 @@ class EDF:
 
     def save_labels(self, save_dir, window_size, window_stride, n_jobs):
         saved_list = []
-        for label, window_size in zip(['interictal', 'preictal', 'ictal'], [window_size, window_size, 1]):
+        for label, window_size in zip(['interictal', 'preictal', 'ictal'], [window_size, window_size, 15]):
             time_list = getattr(self, f'{label}_time_list')
             try:
                 eeg = load_edf(self.file_path)

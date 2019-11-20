@@ -76,7 +76,7 @@ class TrainManager:
             patients = [Path(self.train_conf[f'manifest_path']).parent.parent.name] if self.train_conf['only_one_patient'] else CHBMIT_PATIENTS
             path = Path(self.train_conf['manifest_path'])
             for patient in patients:
-                if (path.parents[2] / patient / 'interictal_preictal' / 'manifest.csv').is_file():
+                if (path.resolve().parents[2] / patient / 'interictal_preictal' / 'manifest.csv').is_file():
                     data_dfs[patient] = pd.read_csv(path.parents[2] / patient / 'interictal_preictal' / 'manifest.csv', header=None)
 
         else:
