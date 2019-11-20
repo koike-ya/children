@@ -1,17 +1,18 @@
-import pandas as pd
-import numpy as np
-from typing import List
-from pathlib import Path
+import sys
 from collections import OrderedDict
-
 from copy import deepcopy
-from ml.src.metrics import Metric
-from ml.models.model_manager import model_manager_args, BaseModelManager
-from ml.src.dataloader import set_adda_dataloader
+from pathlib import Path
+from typing import List
+
+import numpy as np
+import pandas as pd
+import torch
 from ml.models.adda_model_manager import AddaModelManager
 from ml.models.keras_model_manager import KerasModelManager
-import torch
-import sys
+from ml.models.model_manager import model_manager_args, BaseModelManager
+from ml.src.dataloader import set_adda_dataloader
+from ml.src.metrics import Metric
+
 sys.path.append('..')
 from src.const import LABELS, PHASES
 from src.const import CHILDREN_PATIENTS
@@ -24,7 +25,7 @@ def train_manager_args(parser):
     train_parser.add_argument('--k-fold', type=int, default=9,
                               help='The number of folds. 1 means training with whole train data')
     train_parser.add_argument('--cv-type', default='normal', help='Type of cross validation.',
-                              choices=['normal', 'patient'])
+                              choices=['normal', 'patient', 'ictal'])
     train_parser.add_argument('--test', action='store_true', help='Do testing, You should be specify k-fold with 1.')
     train_parser.add_argument('--infer', action='store_true', help='Do inference with test_path data,')
     train_parser.add_argument('--adda', action='store_true', help='Adversarial discriminative domain adaptation or not.')
@@ -244,8 +245,7 @@ class TrainManager:
             # データ全体で学習を行う
             raise NotImplementedError
 
-        if self.train_conf['reproduce'] == 'chbmit-cnn':
-            self.train_conf['cv_type'] = 'ictal'
+        if self.train_conf['cv_type'] == 'ictal':
             data_dfs = pd.concat(list(self.data_dfs.values()), axis=0)
             all_labels = data_dfs.squeeze().apply(lambda x: self.label_func(x))
             ictal_start_series = data_dfs[all_labels == 2][0].apply(lambda x: int(x.split('/')[-1].split('_')[-3]))
