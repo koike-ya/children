@@ -17,6 +17,7 @@ from src.const import CHBMIT_PATIENTS
 SOP = 30    # min
 SPH = 5     # min
 SR = 256    # sample rate
+DURATION_AS_ONE_ICTAL = 30
 
 
 def annotate_args(parser):
@@ -139,7 +140,7 @@ def calc_allowed_preictal_time_list(edf_list, ictal_section_list):
     for i, ictal_section in enumerate(ictal_section_list):
         prev_ictal_section = {'end': edf_list[0].start} if i == 0 else ictal_section_list[i - 1]
 
-        if ictal_section['start'] - prev_ictal_section['end'] > timedelta(minutes=SPH):
+        if ictal_section['start'] - prev_ictal_section['end'] > timedelta(minutes=DURATION_AS_ONE_ICTAL):
             duration = min((ictal_section['start'] - prev_ictal_section['end']).seconds, SOP * 60)
             allowed_preictal_time_list.append({'start': ictal_section['start'] - timedelta(seconds=duration + SPH * 60),
                                                'end': ictal_section['start'] - timedelta(minutes=SPH)})
