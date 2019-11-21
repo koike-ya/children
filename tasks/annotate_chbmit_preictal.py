@@ -17,6 +17,7 @@ SOP = 30    # min
 SPH = 5     # min
 SR = 256    # sample rate
 DURATION_AS_ONE_ICTAL = 30
+ICTAL_WINDOW_SIZE = 15
 
 
 def annotate_args(parser):
@@ -48,7 +49,7 @@ class EDF:
 
     def save_labels(self, save_dir, window_size, window_stride, n_jobs):
         saved_list = []
-        for label, window_size in zip(['interictal', 'preictal', 'ictal'], [window_size, window_size, 15]):
+        for label, window_size in zip(['interictal', 'preictal', 'ictal'], [window_size, window_size, ICTAL_WINDOW_SIZE]):
             time_list = getattr(self, f'{label}_time_list')
             try:
                 eeg = load_edf(self.file_path)

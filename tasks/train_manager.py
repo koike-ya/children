@@ -246,10 +246,11 @@ class TrainManager:
             raise NotImplementedError
 
         if self.train_conf['cv_type'] == 'ictal':
+            ICTAL_WINDOW_SIZE = 15
             data_dfs = pd.concat(list(self.data_dfs.values()), axis=0)
             all_labels = data_dfs.squeeze().apply(lambda x: self.label_func(x))
-            ictal_start_series = data_dfs[all_labels == 2][0].apply(lambda x: int(x.split('/')[-1].split('_')[-3]))
-            self.train_conf['k_fold'] = ictal_start_series[ictal_start_series - ictal_start_series.shift(1) != 256].shape[0]
+            ictal_start = data_dfs[all_labels == 2][0].apply(lambda x: int(x.split('/')[-1].split('_')[-3]))
+            self.train_conf['k_fold'] = ictal_start[ictal_start - ictal_start.shift(1) != 256 * ICTAL_WINDOW_SIZE].shape[0]
 
         val_cv_metrics = {metric.name: np.zeros(self.train_conf['k_fold']) for metric in self.metrics}
         test_cv_metrics = {metric.name: np.zeros(self.train_conf['k_fold']) for metric in self.metrics}
