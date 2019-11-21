@@ -70,7 +70,7 @@ class EDF:
 
 def load_edf(edf_path):
     edfreader = pyedflib.EdfReader(str(edf_path))
-    return EEG.from_edf(edfreader, verbose=False)
+    return EEG.from_edf(edfreader)
 
 
 def parse_after_24h(datetime_str):

@@ -14,7 +14,7 @@ from ml.src.metrics import Metric
 from train_manager import TrainManager, train_manager_args
 
 sys.path.append('..')
-from src.const import LABELS
+from src.const import LABELS, ICTALS_3
 
 DATALOADERS = {'normal': set_dataloader, 'eeg': eeg_dataloader, 'ml': set_ml_dataloader}
 
@@ -30,9 +30,12 @@ def train_args(parser):
     return parser
 
 
-def label_func(path):
-    return LABELS[path.split('/')[-1].replace('.pkl', '').split('_')[-1]]
-    # return CHILDREN_PATIENTS.index(path.split('/')[-2])
+def set_label_func(labels):
+    def label_func(path):
+        return labels[path.split('/')[-1].replace('.pkl', '').split('_')[-1]]
+        # return CHILDREN_PATIENTS.index(path.split('/')[-2])
+
+    return label_func
 
 
 def load_func(path):
@@ -42,6 +45,8 @@ def load_func(path):
 def experiment(train_conf) -> float:
 
     dataset_cls = EEGDataSet
+    labels = LABELS if train_conf['data_type'] == 'children' else ICTALS_3
+    label_func = set_label_func(labels)
     set_dataloader_func = DATALOADERS[train_conf['dataloader_type']]
     expt_note = 'Test Patient\tAccuracy\tRecall\n'
 

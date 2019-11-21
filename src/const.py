@@ -1,6 +1,7 @@
 
 PHASES = ['train', 'val', 'test']
 LABELS = {'none': 0, 'seiz': 1, 'arti': 2}
+ICTALS_3 = {'interictal': 0, 'preictal': 1, 'ictal': 2}
 
 
 # children hospital
