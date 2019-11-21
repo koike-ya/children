@@ -135,8 +135,8 @@ def annotate_child(excel_path, annotate_conf):
     for i, pat_info in label_info.iterrows():
 
         (data_dir / pat_info['id']).mkdir(exist_ok=True)
-        if pat_info['id'] != 'MJ00802S':
-            continue
+        #if pat_info['id'] != 'MJ00802S':
+        #    continue
 
         data = load_edf(f"{data_dir}/{pat_info['id']}{file_suffix}")
         sr = data.sr
