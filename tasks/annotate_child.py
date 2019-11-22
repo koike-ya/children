@@ -1,15 +1,13 @@
+import argparse
+import os
 from datetime import datetime as dt
 from pathlib import Path
-import os
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 import pyedflib
-from tqdm import tqdm
-
 from eeglibrary.src import EEG
-
-import argparse
+from tqdm import tqdm
 
 LABEL_COLUMNS = ['id', 'number', 'initial', 'date', 'start_time', 'end_time', 'abstruct', 'detail', 'label']
 LABEL_KIND = ['none', 'seiz', 'arti']
@@ -143,6 +141,11 @@ def annotate_child(excel_path, annotate_conf):
 
         signals = np.zeros((len(CHANNELS), data.values.shape[1]))
         channel_list = []
+
+        if 'EEG' in data.channel_list[0]:
+            data.channel_list = [c.replace('EEG ', '') for c in data.channel_list]
+            data.channel_list = [c.replace('FP1', 'Fp1').replace('FP2', 'Fp2') for c in data.channel_list]
+
         for i, channel in enumerate(CHANNELS):
             signals[i] = data.values[data.channel_list.index(channel)] - data.values[data.channel_list.index(BASE_CHANNELS[i % 2]), :]
             channel_list.append(f'{channel}-{BASE_CHANNELS[i % 2]}')
@@ -189,7 +192,7 @@ def annotate_child(excel_path, annotate_conf):
 
 
 if __name__ == '__main__':
-    excel_path = '/home/tomoya/workspace/research/brain/children/input/eeg_annotation.xlsx'
+    excel_path = '/home/tomoya/workspace/research/brain/children/input_2/eeg_annotation.xlsx'
     parser = argparse.ArgumentParser(description='Annotation arguments')
     annotate_conf = vars(annotate_args(parser).parse_args())
     annotate_child(excel_path, annotate_conf)
