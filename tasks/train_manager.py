@@ -36,6 +36,7 @@ def train_manager_args(parser):
     train_parser.add_argument('--manifest-path', help='data file for training', default='input/train.csv')
     train_parser.add_argument('--only-one-patient', help='Only one patient ', action='store_true')
     train_parser.add_argument('--model-manager', default='pytorch')
+    train_parser.add_argument('--retrain', type=int, default=0)
     parser = model_manager_args(parser)
 
     return parser
@@ -198,7 +199,7 @@ class TrainManager:
         model_manager.train(model)
         _, _, test_metrics = model_manager.test(return_metrics=True)
 
-        return test_metrics, model_manager.model
+        return test_metrics, model_manager
 
     def _train_test_adda(self, whole_epoch=1):
         orig_model = None
@@ -218,7 +219,33 @@ class TrainManager:
             model_manager.model.fitted = True
             _, _, metrics = model_manager.test(return_metrics=True, load_best=False)
 
-        return metrics, model
+        return metrics, model_manager
+
+    def _retrain(self, model_manager):
+        # test_pathのfoldからnつをretrain用に、他をテストにまわして保存する
+        n = self.train_conf['retrain'] * 60
+        test_path_df = pd.read_csv(self.train_conf['test_path'])
+
+        retrain_train_path = self.train_conf['test_path'].replace('_fold', '_retrain-train_fold')
+        test_path_df.iloc[:n].to_csv(retrain_train_path, header=None, index=False)
+        dataset = self.dataset_cls(retrain_train_path, self.train_conf, load_func=self.load_func,
+                                   label_func=self.label_func)
+        model_manager.dataloaders['retrain'] = self.set_dataloader_func(dataset, 'retrain', self.train_conf)
+
+        retrain_test_path = self.train_conf['test_path'].replace('_fold', '_retrain-test_fold')
+        test_path_df.iloc[n:].to_csv(retrain_test_path, header=None, index=False)
+        dataset = self.dataset_cls(retrain_test_path, self.train_conf, load_func=self.load_func,
+                                   label_func=self.label_func)
+        model_manager.dataloaders['retrain_test'] = self.set_dataloader_func(dataset, 'retrain_test', self.train_conf)
+
+        metrics = model_manager.retrain()
+
+        for metric in metrics:
+            if metric.name in ['accuracy', 'recall_1']:
+                self.expt_note += f"\t{metric.average_meter['retrain_test'].best_score}"
+
+        # 新しく作成したマニフェストファイルは削除
+        [Path(path).unlink() for path in [retrain_train_path, retrain_test_path]]
 
     def _update_data_paths(self, fold_count: int, k: int):
         # fold_count...k-foldのうちでいくつ目か
@@ -264,9 +291,9 @@ class TrainManager:
             self._update_data_paths(i, self.train_conf['k_fold'])
 
             if self.train_conf['adda']:
-                result_metrics, model = self._train_test_adda()
+                result_metrics, model_manager = self._train_test_adda()
             else:
-                result_metrics, model = self._train_test()
+                result_metrics, model_manager = self._train_test()
 
             print(f'Fold {i + 1} ended.')
             for metric in result_metrics:
@@ -275,6 +302,10 @@ class TrainManager:
                 # print(f"Metric {metric.name} best score: {metric.average_meter['val'].best_score}")
                 if metric.name in ['accuracy', 'recall_1']:
                     self.expt_note += f"\t{metric.average_meter['test'].best_score}"
+
+            if self.train_conf['retrain']:
+                self._retrain(model_manager)
+
             self.expt_note += '\n'
 
         [print(f'{i + 1} fold {metric_name} score\t mean: {meter.mean() :.4f}\t std: {meter.std() :.4f}') for
@@ -283,7 +314,7 @@ class TrainManager:
         # 新しく作成したマニフェストファイルは削除
         [Path(self.train_conf[f'{phase}_path']).unlink() for phase in PHASES]
 
-        return model, val_cv_metrics, test_cv_metrics
+        return model_manager, val_cv_metrics, test_cv_metrics
 
     def test(self, model_manager=None) -> List[Metric]:
         if not model_manager:

@@ -48,7 +48,7 @@ def experiment(train_conf) -> float:
     labels = LABELS if train_conf['data_type'] == 'children' else ICTALS_3
     label_func = set_label_func(labels)
     set_dataloader_func = DATALOADERS[train_conf['dataloader_type']]
-    expt_note = 'Test Patient\tAccuracy\tRecall\n'
+    expt_note = 'Test Patient\tAccuracy\tRecall\tRetrain Accuracy\tRetrain Recall\n'
 
     metrics = [
         Metric('loss', direction='minimize', save_model=True),
