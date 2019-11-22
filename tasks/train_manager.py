@@ -110,7 +110,7 @@ class TrainManager:
 
         # preictalを選ぶ
         ictal_start_series = data_dfs[all_labels == 2][0].apply(lambda x: int(x.split('/')[-1].split('_')[-3]))
-        preictal_start_idxs = [0] + list(ictal_start_series[ictal_start_series - ictal_start_series.shift(1) != 256 * 15].index)
+        preictal_start_idxs = [0] + list(ictal_start_series[ictal_start_series - ictal_start_series.shift(1) != 256 * 5].index)
         leave_out_preictal = self.data_dfs[1].loc[preictal_start_idxs[fold_count]:preictal_start_idxs[fold_count + 1], :]
         assert not leave_out_preictal.empty
 

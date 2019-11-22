@@ -17,7 +17,7 @@ SOP = 30    # min
 SPH = 5     # min
 SR = 256    # sample rate
 DURATION_AS_ONE_ICTAL = 30
-ICTAL_WINDOW_SIZE = 15
+ICTAL_WINDOW_SIZE = 5
 
 
 def annotate_args(parser):
