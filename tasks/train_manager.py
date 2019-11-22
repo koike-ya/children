@@ -19,6 +19,9 @@ from src.const import CHILDREN_PATIENTS
 from src.const import CHBMIT_PATIENTS
 
 
+ICTAL_WINDOW_SIZE = 1
+
+
 def train_manager_args(parser):
     train_parser = parser.add_argument_group('train arguments')
     train_parser.add_argument('--only-test', action='store_true', help='Load learned model and not training')
@@ -110,8 +113,10 @@ class TrainManager:
 
         # preictalを選ぶ
         ictal_start_series = data_dfs[all_labels == 2][0].apply(lambda x: int(x.split('/')[-1].split('_')[-3]))
-        preictal_start_idxs = [0] + list(ictal_start_series[ictal_start_series - ictal_start_series.shift(1) != 256 * 5].index)
+        preictal_start_idxs = [0] + list(
+            ictal_start_series[ictal_start_series - ictal_start_series.shift(1) != 256 * ICTAL_WINDOW_SIZE].index)
         leave_out_preictal = self.data_dfs[1].loc[preictal_start_idxs[fold_count]:preictal_start_idxs[fold_count + 1], :]
+        print(ictal_start_series)
         assert not leave_out_preictal.empty
 
         # interictalを選ぶ
