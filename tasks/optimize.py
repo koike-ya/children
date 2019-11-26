@@ -79,13 +79,23 @@ def objective(trial):
     return val_metrics['loss'].mean()
 
 
+def optimize(study):
+    """
+    objectiveから返ってくる値を最小化するようn_trials回だけパラメータ更新を行う
+    :return:
+    """
+    study.optimize(objective, n_trials=2, n_jobs=1)
+    return study.trials_dataframe()
+
+
 def tuning() -> float:
 
-    study = optuna.create_study()
-    study.optimize(objective, n_trials=100)
-    print(study.best_params)
     now_time = datetime.today().strftime('%y%m%H%M')
-    study.trials_dataframe().to_csv(f'trials_{now_time}.csv')
+    study = optuna.create_study(direction='minimize')
+    for i in range(40):
+        result_df = optimize(study)
+        result_df.to_csv(f'trials_{now_time}.csv')
+    print(study.best_params)
 
 
 if __name__ == '__main__':
