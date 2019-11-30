@@ -67,8 +67,12 @@ def experiment(train_conf) -> float:
 
     now_time = datetime.today().strftime('%y%m%H%M')
     expt_name = f"{len(train_conf['class_names'])}-class_{train_conf['model_type']}_{train_conf['expt_id']}_{now_time}.txt"
+
+    expt_note_csv = pd.read_csv(io.StringIO(train_manager.expt_note))
+    expt_note_csv = expt_note_csv.append(pd.DataFrame(expt_note_csv.mean()).T)
+    expt_note_csv.to_csv(expt_name[:-4] + '.csv')
+
     with open(Path(__file__).parent.parent / 'output' / expt_name, 'w') as f:
-        f.write(f"experiment notes:\n{pd.read_csv(io.StringIO(train_manager.expt_note))}\n\n")
         f.write(f"{train_conf['k_fold']} fold results:\n")
         for phase in ['val', 'test']:
             f.write(f"{phase} phase results:\n")
