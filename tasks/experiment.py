@@ -5,13 +5,14 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import pandas as pd
 import torch
 from eeglibrary import eeg
 from eeglibrary.src.eeg_dataloader import set_dataloader as eeg_dataloader
 from eeglibrary.src.eeg_dataset import EEGDataSet
+from eeglibrary.src.metrics import Metric
 from eeglibrary.src.preprocessor import preprocess_args
 from ml.src.dataloader import set_dataloader, set_ml_dataloader
-from ml.src.metrics import Metric
 from train_manager import TrainManager, train_manager_args
 
 sys.path.append('..')

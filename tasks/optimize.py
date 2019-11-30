@@ -1,4 +1,5 @@
 import argparse
+import gc
 from datetime import datetime
 
 import optuna
@@ -45,13 +46,17 @@ def select_params(trial):
     # TRAIN_CONF['k_disc'] = trial.suggest_int('k_disc', 5, 30)
     # TRAIN_CONF['k_clf'] = trial.suggest_int('k_clf', 5, 30)
 
-    TRAIN_CONF['retrain'] = trial.suggest_int('retrain', 5, 30)
-    TRAIN_CONF['retrain_epochs'] = trial.suggest_int('retrain_epochs', 0, 40)
+    # TRAIN_CONF['retrain'] = trial.suggest_int('retrain', 5, 30)
+    # TRAIN_CONF['retrain_epochs'] = trial.suggest_int('retrain_epochs', 0, 40)
 
     # negative_rate = trial.suggest_uniform('sample_balance', 0, 1.0)
     # TRAIN_CONF['sample_balance'] = [negative_rate, 1.0 - negative_rate]
     # TRAIN_CONF['batch_size'] = trial.suggest_int('batch_size', 16, 128)
     # TRAIN_CONF['lr'] = trial.suggest_loguniform('lr', 1e-7, 1e-3)
+
+    TRAIN_CONF['rnn_hidden_size'] = trial.suggest_int('rnn_hidden_size', 50, 400)
+    TRAIN_CONF['rnn_n_layers'] = trial.suggest_int('rnn_n_layers', 1, 5)
+    TRAIN_CONF['rnn_type'] = trial.suggest_categorical('rnn_type', ['gru', 'lstm', 'rnn'])
 
 
 def objective(trial):
@@ -68,11 +73,14 @@ def objective(trial):
     ]
 
     TRAIN_CONF['class_names'] = list(set(LABELS.values()))
+    TRAIN_CONF['reproduce'] = ''
 
     select_params(trial)
 
     train_manager = TrainManager(TRAIN_CONF, load_func, label_func, dataset_cls, set_dataloader_func, metrics, expt_note)
     model, val_metrics, test_metrics = train_manager.train_test()
+    print(gc.collect())
+
     for phase, metrics in zip(['val', 'test'], [val_metrics, test_metrics]):
         for metric, value in metrics.items():
             trial.set_user_attr(f'{phase}_{metric}', value)
