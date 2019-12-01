@@ -49,7 +49,7 @@ def select_params(trial):
     # TRAIN_CONF['retrain'] = trial.suggest_int('retrain', 5, 30)
     # TRAIN_CONF['retrain_epochs'] = trial.suggest_int('retrain_epochs', 0, 40)
 
-    # negative_rate = trial.suggest_uniform('sample_balance', 0, 1.0)
+    # negative_rate = trial.suggest_uniform('sample_balance', 0.2, 0.95)
     # TRAIN_CONF['sample_balance'] = [negative_rate, 1.0 - negative_rate]
     # TRAIN_CONF['batch_size'] = trial.suggest_int('batch_size', 16, 128)
     # TRAIN_CONF['lr'] = trial.suggest_loguniform('lr', 1e-7, 1e-3)
@@ -67,9 +67,7 @@ def objective(trial):
 
     metrics = [
         Metric('loss', direction='minimize', save_model=True),
-        Metric('accuracy', direction='maximize'),
-        Metric('recall_1', direction='maximize'),
-        Metric('far', direction='minimize')
+        Metric('f1', direction='maximize'),
     ]
 
     TRAIN_CONF['class_names'] = list(set(LABELS.values()))
@@ -84,7 +82,7 @@ def objective(trial):
     for phase, metrics in zip(['val', 'test'], [val_metrics, test_metrics]):
         for metric, value in metrics.items():
             trial.set_user_attr(f'{phase}_{metric}', value)
-    return val_metrics['loss'].mean()
+    return test_metrics['f1'].mean()
 
 
 def optimize(study):

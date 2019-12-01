@@ -1,5 +1,6 @@
 import argparse
 import os
+import sys
 from pathlib import Path
 
 import pandas as pd
@@ -7,7 +8,6 @@ import pyedflib
 from eeglibrary.src import EEG
 from tqdm import tqdm
 
-import sys
 sys.path.append('..')
 from src.const import CHBMIT_PATIENTS
 
@@ -21,7 +21,7 @@ def annotate_args(parser):
 
 def load_edf(edf_path):
     edfreader = pyedflib.EdfReader(edf_path)
-    return EEG.from_edf(edfreader, verbose=False)
+    return EEG.from_edf(edfreader)
 
 
 def annotate_chbmit(data_dir, annotate_conf):

@@ -54,7 +54,7 @@ def experiment(train_conf) -> float:
 
     metrics = [
         Metric('loss', direction='minimize', save_model=True),
-        Metric('accuracy', direction='maximize'),
+        Metric('precision', direction='maximize'),
         Metric('recall_1', direction='maximize'),
         Metric('far', direction='minimize')
     ]
