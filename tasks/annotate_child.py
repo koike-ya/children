@@ -1,13 +1,12 @@
 import argparse
 import os
-from datetime import datetime as dt
+from datetime import timedelta, datetime as dt
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pyedflib
 from eeglibrary.src import EEG
-from tqdm import tqdm
 
 LABEL_COLUMNS = ['id', 'number', 'initial', 'date', 'start_time', 'end_time', 'abstruct', 'detail', 'label']
 LABEL_KIND = ['none', 'seiz', 'arti']
@@ -16,12 +15,15 @@ CHANNELS = ['Fp1', 'Fp2', 'O1', 'O2']
 BASE_CHANNELS = ['A1', 'A2']
 
 
+PREICTAL_RANGE = 10
+SR = 500    # sample rate
+POST_ICTAL_RANGE = 10
+
+
 def annotate_args(parser):
     annotate_parser = parser.add_argument_group('annotation arguments')
     annotate_parser.add_argument('--include-artifact', action='store_true', help='Weather to include artiifact or not')
     annotate_parser.add_argument('--n-jobs', type=int, default=4, help='Number of CPUs to use to annotate')
-    annotate_parser.add_argument('--train-size', type=float, default=0.6, help='Train size')
-    annotate_parser.add_argument('--val-size', type=float, default=0.2, help='Validation size')
 
     return parser
 
@@ -37,6 +39,9 @@ def check_input_excel(excel_path):
         exit()
 
     label_info = label_info[~pd.isna(label_info['id'])]
+    label_info['start_datetime'] = pd.to_datetime(label_info['date'].astype(str).str[:-8] + label_info['start_time'].astype(str))
+    label_info['end_datetime'] = pd.to_datetime(label_info['date'].astype(str).str[:-8] + label_info['end_time'].astype(str))
+
     return label_info
 
 
@@ -45,75 +50,121 @@ def load_edf(edf_path):
     return EEG.from_edf(edfreader)
 
 
-def annotate(sr, label_info, with_artifact=False):
-    start_time = label_info['start_time']
-    label_list = []
-
-    def time_to_index(time_):
-        time_ = dt.strptime(time_, '%H:%M:%S').time()
-        diff = {d: getattr(time_, d) - getattr(start_time, d) for d in ['hour', 'minute', 'second']}
-        if diff['hour'] < 0:
-            diff['hour'] += 24
-        return (diff['hour'] * 60 * 60 + diff['minute'] * 60 + diff['second']) * sr
+def annotate(label_info):
+    ictal_list = []
+    arti_list = []
 
     labels = label_info['label'].split('\n')
     for label_time in labels:
         if label_time[:2] == '発作':
-            label = 'seiz'
+            label = 'ictal'
             duration = label_time[3:].split(',')
         elif label_time[:7] == 'アーチファクト':
-            if not with_artifact:
-                continue
             label = 'arti'
             duration = label_time[8:].split(',')
         else:
             raise NotImplementedError
 
+        tmp_date = label_info['start_datetime']
         for d in duration:
             # 終わりが記載されていない場合は1秒間のラベルとしている
-            start, end = d.split('-')
-            s_index, e_index = time_to_index(start), time_to_index(end)
-            label_list.append({'label': label, 's_index': s_index, 'e_index': e_index})
+            start, end = dt.strptime(d.split('-')[0], '%H:%M:%S'), dt.strptime(d.split('-')[1], '%H:%M:%S')
+            start = tmp_date.replace(hour=start.hour, minute=start.minute, second=start.second)
+            end = tmp_date.replace(hour=end.hour, minute=end.minute, second=end.second)
 
-    label_list.sort(key=lambda x: x['s_index'])
-    return label_list
+            if end < tmp_date:   # endのみ日付をまたいだとき
+                end += timedelta(days=1)
+            if start < tmp_date:  # startもendも日付をまたいだとき
+                start += timedelta(days=1)
 
+            tmp_date = end
 
-def make_manifest(patient_id, renamed_list, train_size: float, val_size: float):
-    size_list = [train_size, train_size + val_size, 1.0]
-    save_dir = Path(renamed_list['none'][0]).parents[1]
-    # データが保存されたパスのリストを受け取り、train, val, testに分割し、それぞれcsvファイルに保存する
-    start_idx_list = {label: 0 for label in renamed_list.keys()}
-    for phase, size in zip(PHASES, size_list):
-        df = pd.DataFrame()
+            locals()[f'{label}_list'].append({'label': label, 'start': start, 'end': end})
 
-        for label in renamed_list.keys():
-            df = pd.concat([df, pd.DataFrame(renamed_list[label][start_idx_list[label]:int(len(renamed_list[label]) * size)])])
-            start_idx_list[label] = int(len(renamed_list[label]) * size)
-        df.to_csv(save_dir / '{}_{}_manifest.csv'.format(patient_id, phase), index=False, header=None)
+    ictal_list.sort(key=lambda x: x['start'])
+    return ictal_list, arti_list
 
 
-def make_edf_summary(excel_path):
-    sr = 500
-    label_info = check_input_excel(excel_path)
-    for i, pat_info in label_info.iterrows():
-        label_list = annotate(sr, pat_info, True)
-        label_list = [(dic['s_index'], dic['e_index']) for dic in label_list if dic['label'] == 'seiz']
+def calc_other_label_section(pat_into, label_list, arti_list, sr=500):
+    whole_edf_start = pat_into['start_datetime']
+    whole_edf_end = pat_into['end_datetime']
 
-        if len(label_list) == 0:
-            continue
+    ictal_list = []
+    preictal_list = []
+    postictal_list = []
+    interictal_list = []
+    to_idx = to_idx_func(whole_edf_start, sr)
 
-        summary = ''
-        summary += f"File Name: {pat_info['id']}_1-1.edf\n"
-        summary += f"File Start Time: {pat_info['start_time']}\n"
-        summary += f"File End Time: {pat_info['end_time']}\n"
-        summary += f"Number of Seizures in File: {len(label_list)}"
-        for i, (start, end) in enumerate(label_list):
-            summary += f'\nSeizure {i+1} Start Time: {int(start // sr)} seconds'
-            summary += f'\nSeizure {i+1} End Time: {int(end // sr)} seconds'
+    for label in label_list + arti_list:
+        label['s_index'] = to_idx(label['start'])
+        label['e_index'] = to_idx(label['end'])
 
-        with open(Path(excel_path).parent / f"{pat_info['id']}-summary.txt", 'w') as f:
-            f.write(summary)
+        if label['label'] == 'ictal':
+            ictal_list.append(label)
+
+    # preictal のラベル計算
+    for i, ictal_section in enumerate(ictal_list):
+        prev_ictal_section = {'end': whole_edf_start} if i == 0 else label_list[i - 1]
+
+        preictal_start = max(prev_ictal_section['end'], ictal_section['start'] - timedelta(minutes=PREICTAL_RANGE))
+
+        if preictal_start < ictal_section['start']:
+            preictal_list.append({'label': 'pre', 'start': preictal_start, 'end': ictal_section['start'],
+                                  's_index': to_idx(preictal_start), 'e_index': to_idx(ictal_section['start'])})
+
+    # postictal のラベル計算
+    for i, ictal_section in enumerate(ictal_list):
+        if len(preictal_list) == len(ictal_list):
+            diff = 1
+        else:
+            diff = 0
+
+        if i == len(ictal_list) - 1:
+            next_preictal_start = whole_edf_end
+        else:
+            next_preictal_start = preictal_list[i + diff]['start']
+
+        postictal_end = min(next_preictal_start, ictal_section['end'] + timedelta(minutes=POST_ICTAL_RANGE))
+        if postictal_end > ictal_section['end']:
+            postictal_list.append({'label': 'post', 'start': ictal_section['end'], 'end': postictal_end,
+                                   's_index': to_idx(ictal_section['end']), 'e_index': to_idx(postictal_end)})
+
+    ictal_list.extend(preictal_list)
+    ictal_list.extend(postictal_list)
+    ictal_list.sort(key=lambda x: x['s_index'])
+
+    # iterictalで埋める
+    for i, section in enumerate(ictal_list):
+        if i == 0:
+            if section['start'] == whole_edf_start:
+                continue
+            else:
+                prev_end = whole_edf_start
+        else:
+            prev_end = ictal_list[i - 1]['end']
+
+        if i == len(ictal_list) - 1:
+            if prev_end == whole_edf_end:
+                continue
+            else:
+                section['start'] = whole_edf_end
+
+        if prev_end < section['start']:
+            interictal_list.append({'label': 'inte', 'start': prev_end, 'end': section['start'],
+                                   's_index': to_idx(prev_end), 'e_index': to_idx(section['start'])})
+
+    ictal_list.extend(interictal_list)
+    ictal_list.sort(key=lambda x: x['s_index'])
+
+    return ictal_list, arti_list
+
+
+def to_idx_func(start_time, sr):
+    def datetime_to_index(time_):
+        assert start_time <= time_
+        return (time_ - start_time).seconds * sr
+
+    return datetime_to_index
 
 
 def annotate_child(excel_path, annotate_conf):
@@ -126,18 +177,32 @@ def annotate_child(excel_path, annotate_conf):
     データを読み込んで分割し、一旦保存する。次にラベルを解析してインデックスを計算し、保存したファイル名を変更することでアノテーションする
     """
     data_dir = Path(excel_path).parent
-    window_size = 1
+    window_size = 30
+    window_stride = 15
+    sr = 500
     label_info = check_input_excel(excel_path)
     file_suffix = '_1-1.edf'
 
     for i, pat_info in label_info.iterrows():
 
         (data_dir / pat_info['id']).mkdir(exist_ok=True)
-        #if pat_info['id'] != 'MJ00802S':
-        #    continue
+        # if pat_info['id'] != 'WJ01003H':
+        #     continue
+
+        if pat_info['start_datetime'] > pat_info['end_datetime']:
+            pat_info['end_datetime'] += timedelta(days=1)
+
+        label_list, arti_list = annotate(pat_info)
+
+        if not label_list:
+            print(f"{pat_info['id']} has no seizure section, so skipped.")
+            continue
+
+        label_list, arti_list = calc_other_label_section(pat_info, label_list, arti_list, sr)
+        print(label_list)
+
 
         data = load_edf(f"{data_dir}/{pat_info['id']}{file_suffix}")
-        sr = data.sr
 
         signals = np.zeros((len(CHANNELS), data.values.shape[1]))
         channel_list = []
@@ -151,48 +216,60 @@ def annotate_child(excel_path, annotate_conf):
             channel_list.append(f'{channel}-{BASE_CHANNELS[i % 2]}')
         data.values = signals
         data.channel_list = channel_list
-        splitted_data = data.split(window_size=window_size, n_jobs=annotate_conf['n_jobs'], padding=0)
+        saved_list = data.split_and_save(window_size=window_size, window_stride=window_stride,
+                                         save_dir=data_dir / pat_info['id'], suffix='_none',
+                                         n_jobs=annotate_conf['n_jobs'], padding=0)
 
         del data
 
         # 先に保存してメモリエラーを回避して、ファイル名にだけ操作を加えてアノテーションする
-        saved_list = []
-        labels = ['none', 'seiz', 'arti'] if annotate_conf['include_artifact'] else ['none', 'seiz']
-        renamed_list = {label: [] for label in labels}
 
-        for i, splitted in tqdm(enumerate(splitted_data), total=len(splitted_data)):
-            s_index = i * sr * window_size
-            file_name = f'{s_index}_{s_index + sr * window_size}.pkl'
-            splitted.to_pkl(data_dir / pat_info['id'] / file_name)
-            saved_list.append(data_dir / pat_info['id'] / file_name)
+        # seiz_sec = 0
+        # arti_sec = 0
+        # for label_info in label_list:
+        #     if label_info['label'] == 'seiz':
+        #         seiz_sec += (label_info['e_index'] - label_info['s_index']) // sr
+        #     if label_info['label'] == 'arti':
+        #         arti_sec += (label_info['e_index'] - label_info['s_index']) // sr
+        # continue
 
-        label_list = annotate(sr, pat_info, annotate_conf['include_artifact'])
+        renamed_list = []
+        pointer = 0
+        arti_pointer = 0    # artifactの区間を削除する
 
-        label_pointer = 0   # ラベルの区間のうち、どこまで終了したかを示す。最大でlen(label_list)-1まで
-        for i, saved_path in enumerate(saved_list):
-            s_index = i * sr * window_size
+        for path in saved_list:
+            if pointer >= len(label_list):
+                continue
 
-            if label_pointer < len(label_list) and s_index > label_list[label_pointer]['e_index']:
-                label_pointer += 1
+            path_s_idx, path_e_idx = list(map(int, Path(path).name.split('_')[:-1]))
 
-            if label_pointer >= len(label_list):
-                label = 'none'
-            elif label_list[label_pointer]['s_index'] <= s_index < label_list[label_pointer]['e_index']:
-                label = label_list[label_pointer]['label']
-            else:
-                # TODO 1秒間のラベルがついているものは全部noneになってしまうのでは。
-                label = 'none'
+            # pathが区間の内側にいるときのみラベルを変更する
+            if path_s_idx >= label_list[pointer]['s_index'] and path_e_idx <= label_list[pointer]['e_index']:
+                # pathがartifactの区間に触れているときは削除
+                if arti_pointer < len(arti_list) and not path_e_idx <= arti_list[arti_pointer]['s_index']:
+                    continue
 
-            os.rename(saved_path, f'{saved_path.parent}/{saved_path.stem}_{label}.pkl')
-            renamed_list[label].append(f'{saved_path.parent}/{saved_path.stem}_{label}.pkl')
+                os.rename(path, f"{Path(path).parent}/{Path(path).name.replace('none', label_list[pointer]['label'])}")
+                renamed_list.append(
+                    f"{Path(path).parent}/{Path(path).name.replace('none', label_list[pointer]['label'])}")
 
-        del splitted_data
+            if path_e_idx >= label_list[pointer]['e_index']:
+                pointer += 1
 
-        make_manifest(pat_info['id'], renamed_list, annotate_conf['train_size'], annotate_conf['val_size'])
+            if arti_pointer < len(arti_list) and path_s_idx >= arti_list[arti_pointer]['e_index']:
+                arti_pointer += 1
+
+        print(pat_info['id'])
+        print(pd.Series(renamed_list).apply(
+            lambda x: x.split('/')[-1].replace('.pkl', '').split('_')[-1]).value_counts())
+        print(Path(renamed_list[0]).parents[1] / f"{pat_info['id']}_manifest.csv")
+        pd.DataFrame(renamed_list).to_csv(Path(renamed_list[0]).parents[1] / f"{pat_info['id']}_manifest.csv",
+                                          header=None, index=False)
+        # exit()
 
 
 if __name__ == '__main__':
-    excel_path = '/home/tomoya/workspace/research/brain/children/input_2/eeg_annotation.xlsx'
+    excel_path = '/home/tomoya/workspace/research/brain/children/input/eeg_annotation.xlsx'
     parser = argparse.ArgumentParser(description='Annotation arguments')
     annotate_conf = vars(annotate_args(parser).parse_args())
     annotate_child(excel_path, annotate_conf)
