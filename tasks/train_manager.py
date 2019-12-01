@@ -66,15 +66,11 @@ class TrainManager:
 
         if self.train_conf['data_type'] == 'children':
             for patient in CHILDREN_PATIENTS:
-                data_df = pd.DataFrame()
-                for phase in PHASES:
-                    path = Path(self.train_conf[f'{phase}_path'])
-                    manifest_name = f"{patient}_{phase}_manifest.csv"
-                    if not (path.parent / manifest_name).is_file():
-                        continue
-                    data_df = pd.concat([data_df, pd.read_csv(path.parent / manifest_name, header=None)])
-                if not data_df.empty:
-                    data_dfs[patient] = data_df
+                path = Path(self.train_conf[f'manifest_path'])
+                manifest_name = f"{patient}_manifest.csv"
+                if not (path.parent / manifest_name).is_file():
+                    continue
+                data_dfs[patient] = pd.read_csv(path.parent / manifest_name, header=None)
 
         elif self.train_conf['data_type'] == 'chbmit':
             patients = [Path(self.train_conf[f'manifest_path']).parent.parent.name] if self.train_conf['only_one_patient'] else CHBMIT_PATIENTS
@@ -258,10 +254,7 @@ class TrainManager:
             train_path_df, val_path_df, test_path_df = self._ictal_one_out_cv(fold_count, k)
 
         for phase in PHASES:
-            if self.train_conf['data_type'] == 'children':
-                file_name = self.train_conf[f'{phase}_path'][:-4].replace('_fold', '') + '_fold.csv'
-            elif self.train_conf['data_type'] == 'chbmit':
-                file_name = Path(self.train_conf['manifest_path']).parent.parent / f'{phase}_path_fold.csv'
+            file_name = Path(self.train_conf['manifest_path']).parent.parent / f'{phase}_path_fold.csv'
 
             locals()[f'{phase}_path_df'].to_csv(file_name, index=False, header=None)
             self.train_conf[f'{phase}_path'] = str(file_name)

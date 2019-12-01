@@ -1,6 +1,6 @@
 
 PHASES = ['train', 'val', 'test']
-LABELS = {'none': 0, 'seiz': 1, 'arti': 2}
+LABELS = {'inte': 0, 'pre': 0, 'ictal': 1, 'post': 0}
 ICTALS_3 = {'interictal': 0, 'preictal': 1, 'ictal': 2}
 
 
