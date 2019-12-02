@@ -113,11 +113,8 @@ def calc_other_label_section(pat_into, label_list, arti_list, sr=500):
                                   's_index': to_idx(preictal_start), 'e_index': to_idx(ictal_section['start'])})
 
     # postictal のラベル計算
+    diff = 1 if len(preictal_list) == len(ictal_list) else 0
     for i, ictal_section in enumerate(ictal_list):
-        if len(preictal_list) == len(ictal_list):
-            diff = 1
-        else:
-            diff = 0
 
         if i == len(ictal_list) - 1:
             next_preictal_start = whole_edf_end
@@ -126,6 +123,7 @@ def calc_other_label_section(pat_into, label_list, arti_list, sr=500):
 
         postictal_end = min(next_preictal_start, ictal_section['end'] + timedelta(minutes=POST_ICTAL_RANGE))
         if postictal_end > ictal_section['end']:
+
             postictal_list.append({'label': 'post', 'start': ictal_section['end'], 'end': postictal_end,
                                    's_index': to_idx(ictal_section['end']), 'e_index': to_idx(postictal_end)})
 
@@ -133,10 +131,11 @@ def calc_other_label_section(pat_into, label_list, arti_list, sr=500):
     ictal_list.extend(postictal_list)
     ictal_list.sort(key=lambda x: x['s_index'])
 
-    # iterictalで埋める
+    # interictalで埋める
     for i, section in enumerate(ictal_list):
+        section_start = section['start']
         if i == 0:
-            if section['start'] == whole_edf_start:
+            if section_start == whole_edf_start:
                 continue
             else:
                 prev_end = whole_edf_start
@@ -147,13 +146,15 @@ def calc_other_label_section(pat_into, label_list, arti_list, sr=500):
             if prev_end == whole_edf_end:
                 continue
             else:
-                section['start'] = whole_edf_end
+                section_start = whole_edf_end
 
-        if prev_end < section['start']:
-            interictal_list.append({'label': 'inte', 'start': prev_end, 'end': section['start'],
-                                   's_index': to_idx(prev_end), 'e_index': to_idx(section['start'])})
+        if prev_end < section_start:
+            interictal_list.append({'label': 'inte', 'start': prev_end, 'end': section_start,
+                                   's_index': to_idx(prev_end), 'e_index': to_idx(section_start)})
 
     ictal_list.extend(interictal_list)
+    for section in ictal_list:
+        assert section['end'] > section['start']
     ictal_list.sort(key=lambda x: x['s_index'])
 
     return ictal_list, arti_list
@@ -186,8 +187,8 @@ def annotate_child(excel_path, annotate_conf):
     for i, pat_info in label_info.iterrows():
 
         (data_dir / pat_info['id']).mkdir(exist_ok=True)
-        # if pat_info['id'] != 'WJ01003H':
-        #     continue
+        if pat_info['id'] == 'YJ01140M':
+            continue
 
         if pat_info['start_datetime'] > pat_info['end_datetime']:
             pat_info['end_datetime'] += timedelta(days=1)
@@ -199,8 +200,23 @@ def annotate_child(excel_path, annotate_conf):
             continue
 
         label_list, arti_list = calc_other_label_section(pat_info, label_list, arti_list, sr)
-        print(label_list)
+        # print(label_list)
 
+        # seiz_hour = 0
+        # arti_hour = 0
+        # none_seiz_hour = 0
+        # print(pat_info['id'])
+        # print(f'seiz_hour\tnone_seiz_hour\tartiafact_hour')
+        #
+        # for label_info in label_list:
+        #     if label_info['label'] == 'ictal':
+        #         seiz_hour += (label_info['end'] - label_info['start']).seconds / 3600
+        #     elif label_info['label'] == 'arti':
+        #         arti_hour += (label_info['end'] - label_info['start']).seconds / 3600
+        #     elif label_info['label'] in ['inte', 'pre', 'post']:
+        #         none_seiz_hour += (label_info['end'] - label_info['start']).seconds / 3600
+        # print(f'{seiz_hour :.2f}\t{none_seiz_hour :.2f}\t{arti_hour :.2f}')
+        # continue
 
         data = load_edf(f"{data_dir}/{pat_info['id']}{file_suffix}")
 
@@ -223,15 +239,6 @@ def annotate_child(excel_path, annotate_conf):
         del data
 
         # 先に保存してメモリエラーを回避して、ファイル名にだけ操作を加えてアノテーションする
-
-        # seiz_sec = 0
-        # arti_sec = 0
-        # for label_info in label_list:
-        #     if label_info['label'] == 'seiz':
-        #         seiz_sec += (label_info['e_index'] - label_info['s_index']) // sr
-        #     if label_info['label'] == 'arti':
-        #         arti_sec += (label_info['e_index'] - label_info['s_index']) // sr
-        # continue
 
         renamed_list = []
         pointer = 0
@@ -259,7 +266,6 @@ def annotate_child(excel_path, annotate_conf):
             if arti_pointer < len(arti_list) and path_s_idx >= arti_list[arti_pointer]['e_index']:
                 arti_pointer += 1
 
-        print(pat_info['id'])
         print(pd.Series(renamed_list).apply(
             lambda x: x.split('/')[-1].replace('.pkl', '').split('_')[-1]).value_counts())
         print(Path(renamed_list[0]).parents[1] / f"{pat_info['id']}_manifest.csv")
