@@ -60,7 +60,11 @@ def experiment(train_conf) -> float:
     ]
 
     # train_conf['class_names'] = list(set(LABELS.values()))
-    train_conf['class_names'] = [0, 1]
+    if train_conf['task_type'] == 'classify':
+        train_conf['class_names'] = [0, 1]
+    else:
+        train_conf['class_names'] = [0]
+
     train_manager = TrainManager(train_conf, load_func, label_func, dataset_cls, set_dataloader_func, metrics, expt_note)
 
     model, val_metrics, test_metrics = train_manager.train_test()
