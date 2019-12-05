@@ -33,7 +33,8 @@ def annotate_chbmit(data_dir, annotate_conf):
     データを読み込んで分割し、一旦保存する。次にラベルを解析してインデックスを計算し、保存したファイル名を変更することでアノテーションする
     chb04は途中でchannelが変更されているので除外
     """
-    window_size = 10
+    window_size = 30
+    window_stride = 15
 
     for patient_folder in Path(data_dir).iterdir():
         if not (patient_folder.is_dir() and patient_folder.name in CHBMIT_PATIENTS):
@@ -60,12 +61,15 @@ def annotate_chbmit(data_dir, annotate_conf):
             assert len(data.channel_list) == data.values.shape[0]
 
             # 先に保存してメモリエラーを回避して、ファイル名にだけ操作を加えてアノテーションする
-            saved_list = data.split_and_save(window_size=window_size, n_jobs=annotate_conf['n_jobs'], padding=0,
-                                             save_dir=save_dir, suffix='_none')
+            saved_list = data.split_and_save(window_size=window_size, window_stride=window_stride,
+                                             n_jobs=annotate_conf['n_jobs'], padding=0, save_dir=save_dir,
+                                             suffix='_none')
             del data
 
             n_seizures = int(summary[nth_edf].split('\n')[3].split(': ')[-1])
-            remove_idx_list = []    # ラベルがまたがっているpklファイルの、saved_list内のindexを入れる
+            remove_idx = []    # ラベルがまたがっているpklファイルの、saved_list内のindexを入れる
+            if n_seizures == 0:
+                continue
             for nth_seizure in range(n_seizures):
                 start_sec = int(summary[nth_edf].split('\n')[4 + nth_seizure * 2].split(': ')[-1].replace(' ', '').replace('seconds', ''))
                 end_sec = int(summary[nth_edf].split('\n')[5 + nth_seizure * 2].split(': ')[-1].replace(' ', '').replace('seconds', ''))
@@ -73,7 +77,7 @@ def annotate_chbmit(data_dir, annotate_conf):
                 # start_secやend_secがwindow_sizeで割って余るとき、その区間はラベルがまたがっている
                 for sec in [start_sec, end_sec]:
                     if sec % window_size != 0:
-                        remove_idx_list.append(sec // window_size)
+                        remove_idx.append(sec // window_size)
 
                 # seizureの区間のファイル名を変更する。
                 # ラベルがまたがる区間はあとのマニフェスト作成時に抜かれるため、seizでラベル付されているが問題ない
@@ -94,7 +98,7 @@ def annotate_chbmit(data_dir, annotate_conf):
 
 
 if __name__ == '__main__':
-    data_dir = '/media/tomoya/3RD/chb-mit/'
+    data_dir = '/media/tomoya/SSD-PGU3/research/brain/chb-mit/'
     parser = argparse.ArgumentParser(description='Annotation arguments')
     annotate_conf = vars(annotate_args(parser).parse_args())
     annotate_chbmit(data_dir, annotate_conf)

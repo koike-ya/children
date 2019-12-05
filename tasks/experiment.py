@@ -56,7 +56,7 @@ def experiment(train_conf) -> float:
         Metric('loss', direction='minimize', save_model=True),
         Metric('precision', direction='maximize'),
         Metric('recall_1', direction='maximize'),
-        Metric('far', direction='minimize')
+        Metric('accuracy', direction='maximize')
     ]
 
     # train_conf['class_names'] = list(set(LABELS.values()))

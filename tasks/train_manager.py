@@ -65,18 +65,22 @@ class TrainManager:
         data_dfs = OrderedDict()
 
         if self.train_conf['data_type'] == 'children':
-            for patient in CHILDREN_PATIENTS:
-                path = Path(self.train_conf[f'manifest_path'])
-                manifest_name = f"{patient}_manifest.csv"
-                if not (path.parent / manifest_name).is_file():
-                    continue
-                data_dfs[patient] = pd.read_csv(path.parent / manifest_name, header=None)
+            if self.train_conf['only_one_patient']:
+                data_dfs[0] = pd.read_csv(self.train_conf[f'manifest_path'], header=None)
+
+            else:
+                for patient in CHILDREN_PATIENTS:
+                    path = Path(self.train_conf[f'manifest_path'])
+                    manifest_name = f"{patient}_manifest.csv"
+                    if not (path.parent / manifest_name).is_file():
+                        continue
+                    data_dfs[patient] = pd.read_csv(path.parent / manifest_name, header=None)
 
         elif self.train_conf['data_type'] == 'chbmit':
             patients = [Path(self.train_conf[f'manifest_path']).parent.parent.name] if self.train_conf['only_one_patient'] else CHBMIT_PATIENTS
             path = Path(self.train_conf['manifest_path'])
             for patient in patients:
-                if (path.resolve().parents[2] / patient / 'interictal_preictal' / 'manifest.csv').is_file():
+                if (path.resolve().parents[2] / patient / str(path).split('/')[-2] / 'manifest.csv').is_file():
                     data_dfs[patient] = pd.read_csv(path.parents[2] / patient / 'interictal_preictal' / 'manifest.csv', header=None)
 
         else:
@@ -271,10 +275,10 @@ class TrainManager:
             raise NotImplementedError
 
         if self.train_conf['cv_type'] == 'ictal':
-            ICTAL_WINDOW_SIZE = 15
+            ictal_label = 1 if self.train_conf['data_type'] == 'children' else 2
             data_dfs = pd.concat(list(self.data_dfs.values()), axis=0)
             all_labels = data_dfs.squeeze().apply(lambda x: self.label_func(x))
-            ictal_start = data_dfs[all_labels == 2][0].apply(lambda x: int(x.split('/')[-1].split('_')[-3]))
+            ictal_start = data_dfs[all_labels == ictal_label][0].apply(lambda x: int(x.split('/')[-1].split('_')[-3]))
             self.train_conf['k_fold'] = ictal_start[ictal_start - ictal_start.shift(1) != 256 * ICTAL_WINDOW_SIZE].shape[0]
 
         val_cv_metrics = {metric.name: np.zeros(self.train_conf['k_fold']) for metric in self.metrics}

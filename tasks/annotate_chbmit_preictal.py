@@ -17,7 +17,7 @@ SOP = 30    # min
 SPH = 5     # min
 SR = 256    # sample rate
 DURATION_AS_ONE_ICTAL = 30
-ICTAL_WINDOW_SIZE = 1
+ICTAL_WINDOW_SIZE = 30
 
 
 def annotate_args(parser):
@@ -249,7 +249,7 @@ def annotate_chbmit(data_dir, annotate_conf):
 
 
 if __name__ == '__main__':
-    data_dir = '/media/tomoya/3RD/chb-mit/'
+    data_dir = '/media/tomoya/SSD-PGU3/research/brain/chb-mit/'
     parser = argparse.ArgumentParser(description='Annotation arguments')
     annotate_conf = vars(annotate_args(parser).parse_args())
     annotate_chbmit(data_dir, annotate_conf)
