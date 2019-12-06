@@ -19,7 +19,7 @@ from src.const import CHILDREN_PATIENTS
 from src.const import CHBMIT_PATIENTS
 
 
-ICTAL_WINDOW_SIZE = 1
+ICTAL_WINDOW_SIZE = 15
 
 
 def train_manager_args(parser):
@@ -104,7 +104,7 @@ class TrainManager:
 
         return model_manager
 
-    def _ictal_one_out_cv(self, fold_count, k):
+    def _preictal_one_out_cv(self, fold_count, k):
         data_dfs = pd.concat(list(self.data_dfs.values()), axis=0)
         all_labels = data_dfs.squeeze().apply(lambda x: self.label_func(x))
 
@@ -117,7 +117,7 @@ class TrainManager:
         preictal_start_idxs = [0] + list(
             ictal_start_series[ictal_start_series - ictal_start_series.shift(1) != 256 * ICTAL_WINDOW_SIZE].index)
         leave_out_preictal = self.data_dfs[1].loc[preictal_start_idxs[fold_count]:preictal_start_idxs[fold_count + 1], :]
-        print(ictal_start_series)
+        print(leave_out_preictal)
         assert not leave_out_preictal.empty
 
         # interictalを選ぶ
@@ -134,6 +134,38 @@ class TrainManager:
                                    train_val_inte.iloc[:len(train_val_inte) * 3 // 4, :]]).reset_index(drop=True)
         val_path_df = pd.concat([train_val_pre.iloc[len(train_val_pre) * 3 // 4:, :],
                                    train_val_inte.iloc[len(train_val_inte) * 3 // 4:, :]]).reset_index(drop=True)
+
+        return train_path_df, val_path_df, test_path_df
+
+    def _ictal_one_out_cv(self, fold_count, k):
+        data_dfs = pd.concat(list(self.data_dfs.values()), axis=0)
+        all_labels = data_dfs.squeeze().apply(lambda x: self.label_func(x))
+
+        self.data_dfs = {}
+        for class_ in [0, 1]:
+            self.data_dfs[class_] = data_dfs[all_labels == class_]
+
+        # ictalを選ぶ
+        ictal_start_series = data_dfs[all_labels == 1][0].apply(lambda x: int(x.split('/')[-1].split('_')[-3]))
+        ictal_start_idxs = list(ictal_start_series[ictal_start_series - ictal_start_series.shift(1) != 500 * 15].index)
+        leave_out_ictal = self.data_dfs[1].loc[ictal_start_idxs[fold_count]:ictal_start_idxs[fold_count + 1] - 1, :]
+        print(leave_out_ictal)
+        assert not leave_out_ictal.empty
+
+        # interictalを選ぶ
+        length = len(self.data_dfs[0]) // k
+        start_index = fold_count * length
+        leave_out_interictal = self.data_dfs[0].reset_index(drop=True).iloc[start_index:start_index + length, :]
+
+        test_path_df = pd.concat([leave_out_ictal, leave_out_interictal]).reset_index(drop=True)
+
+        train_val_ictal = self.data_dfs[1][~self.data_dfs[1].index.isin(leave_out_ictal.index)].reset_index(drop=True)
+        train_val_inte = self.data_dfs[0][~self.data_dfs[0].index.isin(leave_out_interictal.index)].reset_index(drop=True)
+
+        train_path_df = pd.concat([train_val_ictal.iloc[:len(train_val_ictal) * 3 // 4, :],
+                                   train_val_inte.iloc[:len(train_val_inte) * 3 // 4, :]]).reset_index(drop=True)
+        val_path_df = pd.concat([train_val_ictal.iloc[len(train_val_ictal) * 3 // 4:, :],
+                                 train_val_inte.iloc[len(train_val_inte) * 3 // 4:, :]]).reset_index(drop=True)
 
         return train_path_df, val_path_df, test_path_df
 
@@ -167,6 +199,11 @@ class TrainManager:
         patients = list(self.data_dfs.keys())
         n_patients_to_test = len(patients) // k
         assert float(n_patients_to_test) == len(patients) / k
+
+        if self.train_conf['data_type'] == 'chbmit':
+            data_dfs = self.data_dfs
+            for (patient, df) in self.data_dfs.items():
+                data_dfs[patient] = df[df[0].apply(lambda x: self.label_func(x)) != 2]
         
         test_patients = patients[fold_count * n_patients_to_test:(fold_count + 1) * n_patients_to_test]
         print(f'{test_patients} will be used as test patients')
@@ -254,8 +291,10 @@ class TrainManager:
             train_path_df, val_path_df, test_path_df = self._normal_cv(fold_count, k)
         elif self.train_conf['cv_type'] == 'patient':
             train_path_df, val_path_df, test_path_df = self._patient_one_out_cv(fold_count, k)
-        elif self.train_conf['cv_type'] == 'ictal':
+        elif self.train_conf['cv_type'] == 'ictal' and self.train_conf['data_type'] == 'children':
             train_path_df, val_path_df, test_path_df = self._ictal_one_out_cv(fold_count, k)
+        elif self.train_conf['cv_type'] == 'ictal' and self.train_conf['data_type'] == 'chbmit':
+            train_path_df, val_path_df, test_path_df = self._preictal_one_out_cv(fold_count, k)
 
         for phase in PHASES:
             file_name = Path(self.train_conf['manifest_path']).parent.parent / f'{phase}_path_fold.csv'
@@ -275,11 +314,16 @@ class TrainManager:
             raise NotImplementedError
 
         if self.train_conf['cv_type'] == 'ictal':
-            ictal_label = 1 if self.train_conf['data_type'] == 'children' else 2
+            if self.train_conf['data_type'] == 'children':
+                ictal_label = 1
+                ictal_interval = 500 * 15
+            elif self.train_conf['data_type'] == 'chbmit':
+                ictal_label = 1
+                ictal_interval = 256 * ICTAL_WINDOW_SIZE
             data_dfs = pd.concat(list(self.data_dfs.values()), axis=0)
             all_labels = data_dfs.squeeze().apply(lambda x: self.label_func(x))
             ictal_start = data_dfs[all_labels == ictal_label][0].apply(lambda x: int(x.split('/')[-1].split('_')[-3]))
-            self.train_conf['k_fold'] = ictal_start[ictal_start - ictal_start.shift(1) != 256 * ICTAL_WINDOW_SIZE].shape[0]
+            self.train_conf['k_fold'] = ictal_start[ictal_start - ictal_start.shift(1) != ictal_interval].shape[0]
 
         val_cv_metrics = {metric.name: np.zeros(self.train_conf['k_fold']) for metric in self.metrics}
         test_cv_metrics = {metric.name: np.zeros(self.train_conf['k_fold']) for metric in self.metrics}
