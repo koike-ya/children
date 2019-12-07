@@ -301,7 +301,7 @@ class TrainManager:
             train_path_df, val_path_df, test_path_df = self._preictal_one_out_cv(fold_count, k)
 
         for phase in PHASES:
-            file_name = Path(self.train_conf['manifest_path']).parent.parent / f'{phase}_path_fold.csv'
+            file_name = f"{Path(self.train_conf['manifest_path'])}_{phase}_path_fold.csv"
 
             locals()[f'{phase}_path_df'].to_csv(file_name, index=False, header=None)
             self.train_conf[f'{phase}_path'] = str(file_name)
