@@ -51,7 +51,7 @@ def load_func(path):
 
 
 class TrainManager:
-    def __init__(self, train_conf, load_func, label_func, dataset_cls, set_dataloader_func, metrics, expt_note):
+    def __init__(self, train_conf, load_func, label_func, dataset_cls, set_dataloader_func, metrics, expt_note=''):
         self.train_conf = train_conf
         self.load_func = load_func
         self.label_func = label_func
@@ -60,6 +60,10 @@ class TrainManager:
         self.metrics = metrics
         self.expt_note = expt_note
         self.data_dfs = pd.DataFrame()
+
+    def memo_note(self, word, end=''):
+        if self.expt_note:
+            self.expt_note += word
 
     def _set_data_dfs(self):
         data_dfs = OrderedDict()
@@ -113,11 +117,10 @@ class TrainManager:
             self.data_dfs[class_] = data_dfs[all_labels == class_]
 
         # preictalを選ぶ
-        ictal_start_series = data_dfs[all_labels == 2][0].apply(lambda x: int(x.split('/')[-1].split('_')[-3]))
-        preictal_start_idxs = [0] + list(
-            ictal_start_series[ictal_start_series - ictal_start_series.shift(1) != 256 * ICTAL_WINDOW_SIZE].index)
+        ictal_start = data_dfs[all_labels == 2][0].apply(lambda x: int(x.split('/')[-1].split('_')[-3]))
+        preictal_start_idxs = [0] + list(ictal_start[ictal_start - ictal_start.shift(1) != 256 * ICTAL_WINDOW_SIZE].index)
+        print(preictal_start_idxs[:10])
         leave_out_preictal = self.data_dfs[1].loc[preictal_start_idxs[fold_count]:preictal_start_idxs[fold_count + 1], :]
-        print(leave_out_preictal)
         assert not leave_out_preictal.empty
 
         # interictalを選ぶ
@@ -138,6 +141,7 @@ class TrainManager:
         return train_path_df, val_path_df, test_path_df
 
     def _ictal_one_out_cv(self, fold_count, k):
+
         data_dfs = pd.concat(list(self.data_dfs.values()), axis=0)
         all_labels = data_dfs.squeeze().apply(lambda x: self.label_func(x))
 
@@ -146,10 +150,10 @@ class TrainManager:
             self.data_dfs[class_] = data_dfs[all_labels == class_]
 
         # ictalを選ぶ
-        ictal_start_series = data_dfs[all_labels == 1][0].apply(lambda x: int(x.split('/')[-1].split('_')[-3]))
-        ictal_start_idxs = list(ictal_start_series[ictal_start_series - ictal_start_series.shift(1) != 500 * 15].index)
+        ictal_start = data_dfs[all_labels == 1][0].apply(lambda x: int(x.split('/')[-1].split('_')[-3]))
+        ictal_start_idxs = list(ictal_start[ictal_start - ictal_start.shift(1) != 500 * 15].index) + [1000000]
         leave_out_ictal = self.data_dfs[1].loc[ictal_start_idxs[fold_count]:ictal_start_idxs[fold_count + 1] - 1, :]
-        print(leave_out_ictal)
+        print(leave_out_ictal.values[:10])
         assert not leave_out_ictal.empty
 
         # interictalを選ぶ
@@ -207,7 +211,7 @@ class TrainManager:
         
         test_patients = patients[fold_count * n_patients_to_test:(fold_count + 1) * n_patients_to_test]
         print(f'{test_patients} will be used as test patients')
-        self.expt_note += f'{test_patients}'
+        self.memo_note(test_patients)
         test_path_df = [self.data_dfs[patient] for patient in test_patients]
         test_path_df = pd.concat(test_path_df, axis=0, sort=False)
 
@@ -279,7 +283,7 @@ class TrainManager:
 
         for metric in metrics:
             if metric.name in ['accuracy', 'recall_1']:
-                self.expt_note += f"\t{metric.average_meter['retrain_test'].best_score}"
+                self.memo_note(f"\t{metric.average_meter['retrain_test'].best_score}")
 
         # 新しく作成したマニフェストファイルは削除
         [Path(path).unlink() for path in [retrain_train_path, retrain_test_path]]
@@ -320,10 +324,12 @@ class TrainManager:
             elif self.train_conf['data_type'] == 'chbmit':
                 ictal_label = 1
                 ictal_interval = 256 * ICTAL_WINDOW_SIZE
+
             data_dfs = pd.concat(list(self.data_dfs.values()), axis=0)
             all_labels = data_dfs.squeeze().apply(lambda x: self.label_func(x))
             ictal_start = data_dfs[all_labels == ictal_label][0].apply(lambda x: int(x.split('/')[-1].split('_')[-3]))
             self.train_conf['k_fold'] = ictal_start[ictal_start - ictal_start.shift(1) != ictal_interval].shape[0]
+            print(f"{self.train_conf['k_fold']} folds")
 
         val_cv_metrics = {metric.name: np.zeros(self.train_conf['k_fold']) for metric in self.metrics}
         test_cv_metrics = {metric.name: np.zeros(self.train_conf['k_fold']) for metric in self.metrics}
@@ -342,12 +348,12 @@ class TrainManager:
                 test_cv_metrics[metric.name][i] = metric.average_meter['test'].best_score
                 # print(f"Metric {metric.name} best score: {metric.average_meter['val'].best_score}")
                 if metric.name in ['accuracy', 'recall_1']:
-                    self.expt_note += f"\t{metric.average_meter['test'].best_score}"
+                    self.memo_note(f"\t{metric.average_meter['test'].best_score}")
 
             if self.train_conf['retrain']:
                 self._retrain(model_manager)
 
-            self.expt_note += '\n'
+            self.memo_note('\n')
 
         [print(f'{i + 1} fold {metric_name} score\t mean: {meter.mean() :.4f}\t std: {meter.std() :.4f}') for
          metric_name, meter in test_cv_metrics.items()]
