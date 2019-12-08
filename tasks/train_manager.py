@@ -232,7 +232,7 @@ class TrainManager:
         dataloaders = {}
         for phase in PHASES:
             dataset = self.dataset_cls(self.train_conf[f'{phase}_path'], self.train_conf,
-                                       load_func=self.load_func, label_func=self.label_func)
+                                       load_func=self.load_func, label_func=self.label_func, phase=phase)
             dataloaders[phase] = self.set_dataloader_func(dataset, phase, self.train_conf)
 
         model_manager = self._init_model_manager(dataloaders)
