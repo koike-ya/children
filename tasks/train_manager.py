@@ -27,6 +27,7 @@ def train_manager_args(parser):
     train_parser.add_argument('--only-test', action='store_true', help='Load learned model and not training')
     train_parser.add_argument('--k-fold', type=int, default=9,
                               help='The number of folds. 1 means training with whole train data')
+    train_parser.add_argument('--n-val-patients', type=int, default=1, help='Number of patients to use as validation')
     train_parser.add_argument('--cv-type', default='normal', help='Type of cross validation.',
                               choices=['normal', 'patient', 'ictal'])
     train_parser.add_argument('--test', action='store_true', help='Do testing, You should be specify k-fold with 1.')
@@ -201,28 +202,30 @@ class TrainManager:
 
     def _patient_one_out_cv(self, fold_count, k):
         patients = list(self.data_dfs.keys())
-        n_patients_to_test = len(patients) // k
-        assert float(n_patients_to_test) == len(patients) / k
+        n_val = self.train_conf['n_val_patients']
+        assert len(patients) - n_val >= 2
 
         if self.train_conf['data_type'] == 'chbmit':
             data_dfs = self.data_dfs
             for (patient, df) in self.data_dfs.items():
                 data_dfs[patient] = df[df[0].apply(lambda x: self.label_func(x)) != 2]
         
-        test_patients = patients[fold_count * n_patients_to_test:(fold_count + 1) * n_patients_to_test]
-        print(f'{test_patients} will be used as test patients')
+        test_patients = patients[fold_count:fold_count + 1]
+        print(f'Patients for test: {test_patients}')
         self.memo_note(test_patients)
         test_path_df = [self.data_dfs[patient] for patient in test_patients]
         test_path_df = pd.concat(test_path_df, axis=0, sort=False)
 
-        train_val_patients = [patient for patient in patients if patient not in test_patients]
-        val_start_idx = (fold_count % (k - 1)) * n_patients_to_test
-        val_patients = train_val_patients[val_start_idx:val_start_idx + n_patients_to_test]
-        print(f'{val_patients} will be used as validation patients')
+        train_val_patients = [patient for patient in patients if patient not in test_patients] + patients[:n_val - 1]
+        val_start_idx = fold_count % (k - 1)
+        val_patients = train_val_patients[val_start_idx:val_start_idx + n_val]
+        print(f'Patients for validation: {val_patients} will be used as validation patients')
         val_path_df = [self.data_dfs[patient] for patient in val_patients]
         val_path_df = pd.concat(val_path_df, axis=0, sort=False)
-        
-        train_path_df = [self.data_dfs[patient] for patient in train_val_patients if patient not in val_patients]
+
+        train_patients = [patient for patient in patients if patient not in val_patients + test_patients]
+        print(f'Patients for training: {train_patients}')
+        train_path_df = [self.data_dfs[patient] for patient in patients if patient not in val_patients + test_patients]
         train_path_df = pd.concat(train_path_df, axis=0, sort=False)
 
         return train_path_df, val_path_df, test_path_df
