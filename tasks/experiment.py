@@ -75,16 +75,16 @@ def experiment(train_conf) -> float:
         expt_note_csv = expt_note_csv.append(pd.DataFrame(expt_note_csv.mean()).T)
         expt_note_csv.to_csv(train_conf['expt_id'][:-4] + '.csv')
 
-    (Path(__file__).parent.parent / 'output' / 'params').mkdir(exist_ok=True)
-    with open(Path(__file__).parent.parent / 'output' / 'params' / f"{train_conf['expt_id']}.txt", 'w') as f:
+    (Path(__file__).resolve().parent.parent / 'output' / 'params').mkdir(exist_ok=True)
+    with open(Path(__file__).resolve().parent.parent / 'output' / 'params' / f"{train_conf['expt_id']}.txt", 'w') as f:
         f.write('\nParameters:\n')
         f.write(json.dumps(train_conf, indent=4))
 
-    (Path(__file__).parent.parent / 'output' / 'metrics').mkdir(exist_ok=True)
-    metrics2df(val_metrics).to_csv(Path(__file__).parent.parent / 'output' / 'metrics' / f"{train_conf['expt_id']}_val.csv",
+    (Path(__file__).resolve().parent.parent / 'output' / 'metrics').mkdir(exist_ok=True)
+    metrics2df(val_metrics).to_csv(Path(__file__).resolve().parent.parent / 'output' / 'metrics' / f"{train_conf['expt_id']}_val.csv",
                                    index=False)
     metrics2df(test_metrics).to_csv(
-        Path(__file__).parent.parent / 'output' / 'metrics' / f"{train_conf['expt_id']}_test.csv", index=False)
+        Path(__file__).resolve().parent.parent / 'output' / 'metrics' / f"{train_conf['expt_id']}_test.csv", index=False)
 
 
 if __name__ == '__main__':

@@ -18,13 +18,13 @@ def aggregate(cfg):
     for phase in ['val', 'test']:
         for i, expt_id in enumerate(cfg['expt_ids'].split(',')):
             if i == 0:
-                df = pd.read_csv(Path(__file__).parent.parent / 'output' / 'metrics' / f"{expt_id}_{phase}.csv",
+                df = pd.read_csv(Path(__file__).resolve().parent.parent / 'output' / 'metrics' / f"{expt_id}_{phase}.csv",
                                  index_col=0) / total
                 continue
 
-            df += pd.read_csv(Path(__file__).parent.parent / 'output' / 'metrics' / f"{expt_id}_{phase}.csv",
+            df += pd.read_csv(Path(__file__).resolve().parent.parent / 'output' / 'metrics' / f"{expt_id}_{phase}.csv",
                               index_col=0) / total
-        df.to_csv(Path(__file__).parent.parent / 'output' / 'metrics' / f"{cfg['expt_name']}_{phase}.csv")
+        df.to_csv(Path(__file__).resolve().parent.parent / 'output' / 'metrics' / f"{cfg['expt_name']}_{phase}.csv")
 
 
 if __name__ == '__main__':

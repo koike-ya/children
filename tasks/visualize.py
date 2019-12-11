@@ -14,20 +14,21 @@ def aggregate_args(parser):
 
 
 def visualize(cfg):
+    stat = 'mean'
     val_agg_df = pd.DataFrame()
     test_agg_df = pd.DataFrame()
     for expt_id in cfg['expt_ids'].split(','):
         for phase in ['val', 'test']:
 
-            locals()[f'{phase}_metrics'] = pd.read_csv(Path(__file__).parent.parent / 'output' / 'metrics' / f"{expt_id}_{phase}.csv")
+            locals()[f'{phase}_metrics'] = pd.read_csv(Path(__file__).resolve().parent.parent / 'output' / 'metrics' / f"{expt_id}_{phase}.csv")
 
             series = pd.Series()
             for i, row in locals()[f'{phase}_metrics'].iterrows():
                 for col in ['mean', 'std']:
-                    series[f"{row['metric_name']}_{col}"] = row[col] * i
+                    series[f"{row['metric_name']}_{col}"] = row[col]
             _ = pd.DataFrame(series).T
             _.index = [expt_id]
-            _ = _[[c for c in _.columns if 'mean' in c]]
+            _ = _[[c for c in _.columns if stat in c]]
             _.columns = [c[:-5] for c in _.columns]
 
             if phase == 'val':
@@ -35,14 +36,14 @@ def visualize(cfg):
             else:
                 test_agg_df = pd.concat([test_agg_df, _])
 
-    test_agg_df.to_csv(Path(__file__).parent.parent / 'output' / 'metrics' / f"vis-test-{cfg['expt_name']}.csv")
-    val_agg_df.to_csv(Path(__file__).parent.parent / 'output' / 'metrics' / f"vis-val-{cfg['expt_name']}.csv")
+    test_agg_df.to_csv(Path(__file__).resolve().parent.parent / 'output' / 'metrics' / f"vis-test-{cfg['expt_name']}_{stat}.csv")
+    val_agg_df.to_csv(Path(__file__).resolve().parent.parent / 'output' / 'metrics' / f"vis-val-{cfg['expt_name']}_{stat}.csv")
 
     import matplotlib.pyplot as plt
     test_agg_df.T.plot.bar(rot=0, figsize=(10, 6))
-    plt.savefig(Path(__file__).parent.parent / 'output' / 'metrics' / f"test-{cfg['expt_name']}.png")
+    plt.savefig(Path(__file__).resolve().parent.parent / 'output' / 'metrics' / f"test-{cfg['expt_name']}_{stat}.png")
     val_agg_df.T.plot.bar(rot=0, figsize=(10, 6))
-    plt.savefig(Path(__file__).parent.parent / 'output' / 'metrics' / f"val-{cfg['expt_name']}.png")
+    plt.savefig(Path(__file__).resolve().parent.parent / 'output' / 'metrics' / f"val-{cfg['expt_name']}_{stat}.png")
 
 
 if __name__ == '__main__':
