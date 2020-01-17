@@ -112,7 +112,7 @@ class TrainManager:
     def _ictal_one_out_cv(self, fold_count, k):
 
         data_dfs = pd.concat(list(self.data_dfs.values()), axis=0)
-        all_labels = data_dfs.squeeze().apply(lambda x: self.label_func(x))
+        all_labels = data_dfs.apply(self.label_func, axis=1)
 
         self.data_dfs = {}
         for class_ in [0, 1]:
@@ -148,8 +148,11 @@ class TrainManager:
         return train_path_df, val_path_df, test_path_df
 
     def _normal_cv(self, fold_count, k):
-        data_dfs = pd.concat(list(self.data_dfs.values()), axis=0)
-        all_labels = data_dfs.squeeze().apply(lambda x: self.label_func(x))
+        if fold_count == 0:
+            data_dfs = pd.concat(list(self.data_dfs.values()), axis=0).sample(frac=1)
+        else:
+            data_dfs = pd.concat(list(self.data_dfs.values()), axis=0)
+        all_labels = data_dfs.apply(self.label_func)
 
         self.data_dfs = {}
         for class_ in self.train_conf['class_names']:
@@ -181,7 +184,7 @@ class TrainManager:
         if self.train_conf['data_type'] == 'chbmit':
             data_dfs = self.data_dfs
             for (patient, df) in self.data_dfs.items():
-                data_dfs[patient] = df[df[0].apply(lambda x: self.label_func(x)) != 2]
+                data_dfs[patient] = df[df.apply(self.label_func, axis=1) != 2]
         
         test_patients = patients[fold_count:fold_count + 1]
         print(f'Patients for test: {test_patients}')
@@ -210,6 +213,8 @@ class TrainManager:
             dataset = self.dataset_cls(self.train_conf[f'{phase}_path'], self.train_conf,
                                        load_func=self.load_func, label_func=self.label_func, phase=phase)
             dataloaders[phase] = self.set_dataloader_func(dataset, phase, self.train_conf)
+            if self.train_conf['loss_weight'] == 'balanced':
+                self.train_conf['loss_weight'] = dataloaders['train'].get_label_balance()
 
         model_manager = self._init_model_manager(dataloaders)
 
@@ -279,7 +284,8 @@ class TrainManager:
 
             locals()[f'{phase}_path_df'].to_csv(file_name, index=False, header=None)
             self.train_conf[f'{phase}_path'] = str(file_name)
-            print(f'{phase} data:\n', locals()[f'{phase}_path_df'][0].apply(self.label_func).value_counts())
+            print(f'{phase} data:\n')
+            print(locals()[f'{phase}_path_df'].apply(self.label_func, axis=1).value_counts())
 
     def _train_test_cv(self):
         orig_train_path = self.train_conf['train_path']
@@ -298,7 +304,7 @@ class TrainManager:
                 ictal_interval = 256 * ICTAL_WINDOW_SIZE
 
             data_dfs = pd.concat(list(self.data_dfs.values()), axis=0)
-            all_labels = data_dfs.squeeze().apply(lambda x: self.label_func(x))
+            all_labels = data_dfs.apply(self.label_func, axis=1)
             ictal_start = data_dfs[all_labels == 1][0].apply(lambda x: int(x.split('/')[-1].split('_')[-3]))
             self.train_conf['k_fold'] = ictal_start[ictal_start - ictal_start.shift(1) != ictal_interval].shape[0]
             print(f"{self.train_conf['k_fold']} folds")

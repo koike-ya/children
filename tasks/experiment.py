@@ -16,7 +16,7 @@ from ml.src.metrics import metrics2df
 from train_manager import TrainManager, train_manager_args
 
 sys.path.append('..')
-from src.const import LABELS, ICTALS_3
+from src.const import LABELS, ICTALS_3, CHILDREN_PATIENTS_1
 
 DATALOADERS = {'normal': set_dataloader, 'eeg': eeg_dataloader, 'ml': set_ml_dataloader}
 
@@ -33,8 +33,8 @@ def train_args(parser):
 
 
 def set_label_func(labels):
-    def label_func(path):
-        return labels[path.split('/')[-1].replace('.pkl', '').split('_')[-1]]
+    def label_func(row):
+        return labels[row[0].split('/')[-1].replace('.pkl', '').split('_')[-1]]
         # return CHILDREN_PATIENTS.index(path.split('/')[-2])
 
     return label_func
@@ -93,4 +93,10 @@ if __name__ == '__main__':
     assert train_conf['train_path'] != '' or train_conf['val_path'] != '', \
         'You need to select training, validation data file to training, validation in --train-path, --val-path argments'
     # returns loss or accuracy
-    experiment(train_conf)
+
+    path = '/home/tomoya/workspace/research/brain/children/input/YJ0100DP_manifest.csv'
+    for i, patient in enumerate(CHILDREN_PATIENTS_1):
+        print(patient)
+        train_conf['manifest_path'] = path.replace('YJ0100DP', patient)
+        train_conf['expt_id'] = patient
+        experiment(train_conf)
