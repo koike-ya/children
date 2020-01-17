@@ -10,7 +10,7 @@ from eeglibrary import eeg
 from eeglibrary.src.eeg_dataloader import set_dataloader as eeg_dataloader
 from eeglibrary.src.eeg_dataset import EEGDataSet
 from eeglibrary.src.metrics import Metric
-from eeglibrary.src.preprocessor import preprocess_args
+from eeglibrary.src.preprocessor import eeg_preprocess_args
 from ml.src.dataloader import set_dataloader, set_ml_dataloader
 from ml.src.metrics import metrics2df
 from train_manager import TrainManager, train_manager_args
@@ -23,7 +23,7 @@ DATALOADERS = {'normal': set_dataloader, 'eeg': eeg_dataloader, 'ml': set_ml_dat
 
 def train_args(parser):
     parser = train_manager_args(parser)
-    parser = preprocess_args(parser)
+    parser = eeg_preprocess_args(parser)
     expt_parser = parser.add_argument_group("Experiment arguments")
     expt_parser.add_argument('--expt-id', help='data file for training', default='')
     expt_parser.add_argument('--reproduce', help='Method name for reproduction', default='')
@@ -94,9 +94,11 @@ if __name__ == '__main__':
         'You need to select training, validation data file to training, validation in --train-path, --val-path argments'
     # returns loss or accuracy
 
-    path = '/home/tomoya/workspace/research/brain/children/input/YJ0100DP_manifest.csv'
-    for i, patient in enumerate(CHILDREN_PATIENTS_1):
-        print(patient)
-        train_conf['manifest_path'] = path.replace('YJ0100DP', patient)
-        train_conf['expt_id'] = patient
-        experiment(train_conf)
+    experiment(train_conf)
+
+    # path = '/home/tomoya/workspace/research/brain/children/input/YJ0100DP_manifest.csv'
+    # for i, patient in enumerate(CHILDREN_PATIENTS_1):
+    #     print(patient)
+    #     train_conf['manifest_path'] = path.replace('YJ0100DP', patient)
+    #     train_conf['expt_id'] = patient
+    #     experiment(train_conf)
