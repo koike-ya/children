@@ -7,7 +7,7 @@ from typing import List
 import numpy as np
 import pandas as pd
 import torch
-from ml.models.adda_model_manager import AddaModelManager
+# from ml.models.adda_model_manager import AddaModelManager
 from ml.models.keras_model_manager import KerasModelManager
 from ml.models.model_manager import model_manager_args, BaseModelManager
 from ml.src.dataloader import set_adda_dataloader
@@ -309,8 +309,8 @@ class TrainManager:
             self.train_conf['k_fold'] = ictal_start[ictal_start - ictal_start.shift(1) != ictal_interval].shape[0]
             print(f"{self.train_conf['k_fold']} folds")
 
-        val_cv_metrics = {metric.name: np.zeros(self.train_conf['k_fold']) for metric in self.metrics}
-        test_cv_metrics = {metric.name: np.zeros(self.train_conf['k_fold']) for metric in self.metrics}
+        val_cv_metrics = {metric.name: np.zeros(self.train_conf['k_fold']) for metric in self.metrics['val']}
+        test_cv_metrics = {metric.name: np.zeros(self.train_conf['k_fold']) for metric in self.metrics['test']}
 
         for i in range(self.train_conf['k_fold']):
             self._update_data_paths(i, self.train_conf['k_fold'])
@@ -321,12 +321,12 @@ class TrainManager:
                 result_metrics, model_manager = self._train_test()
 
             print(f'Fold {i + 1} ended.')
-            for metric in result_metrics:
-                val_cv_metrics[metric.name][i] = metric.average_meter['val'].best_score
-                test_cv_metrics[metric.name][i] = metric.average_meter['test'].best_score
-                # print(f"Metric {metric.name} best score: {metric.average_meter['val'].best_score}")
-                if metric.name in ['accuracy', 'recall_1']:
-                    self.memo_note(f"\t{metric.average_meter['test'].best_score}")
+            for phase, metrics in result_metrics.items():
+                if phase == 'train': continue
+                for metric in metrics:
+                    locals()[f'{phase}_cv_metrics'][metric.name][i] = metric.average_meter.best_score
+                    # test_cv_metrics[metric.name][i] = metric.average_meter.best_score
+                    # print(f"Metric {metric.name} best score: {metric.average_meter['val'].best_score}")
 
             if self.train_conf['retrain']:
                 self._retrain(model_manager)

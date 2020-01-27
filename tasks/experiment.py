@@ -26,6 +26,7 @@ def train_args(parser):
     parser = eeg_preprocess_args(parser)
     expt_parser = parser.add_argument_group("Experiment arguments")
     expt_parser.add_argument('--expt-id', help='data file for training', default='')
+    expt_parser.add_argument('--sr', type=int, help='Sampling rate')
     expt_parser.add_argument('--reproduce', help='Method name for reproduction', default='')
     expt_parser.add_argument('--dataloader-type', help='Dataloader type.', choices=['normal', 'eeg', 'ml'], default='eeg')
 
@@ -53,12 +54,25 @@ def experiment(train_conf) -> float:
     # expt_note = 'Test Patient\tAccuracy\tRecall\tRetrain Accuracy\tRetrain Recall\n'
     expt_note = ''
 
-    metrics = [
-        Metric('loss', direction='minimize', save_model=True),
-        Metric('precision', direction='maximize'),
-        Metric('recall_1', direction='maximize'),
-        Metric('accuracy', direction='maximize')
-    ]
+    metrics = dict(
+        train=[
+            Metric('loss', direction='minimize', save_model=True),
+            Metric('uar', direction='maximize'),
+        ],
+        val=[
+            Metric('loss', direction='minimize', save_model=True),
+            Metric('uar', direction='maximize'),
+        ],
+        test=[
+            Metric('loss', direction='minimize', save_model=True),
+            Metric('uar', direction='maximize'),
+            Metric('precision', direction='maximize'),
+            Metric('recall_1', direction='maximize'),
+            Metric('accuracy', direction='maximize'),
+            Metric('f1', direction='maximize'),
+        ],
+    )
+
 
     # train_conf['class_names'] = list(set(LABELS.values()))
     if train_conf['task_type'] == 'classify':
