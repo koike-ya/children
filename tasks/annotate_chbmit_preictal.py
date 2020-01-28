@@ -13,8 +13,6 @@ sys.path.append('..')
 from src.const import CHBMIT_PATIENTS
 
 
-SOP = 30    # min
-SPH = 5     # min
 SR = 256    # sample rate
 DURATION_AS_ONE_ICTAL = 30
 ICTAL_WINDOW_SIZE = 30
@@ -23,6 +21,8 @@ ICTAL_WINDOW_SIZE = 30
 def annotate_args(parser):
     annotate_parser = parser.add_argument_group('annotation arguments')
     annotate_parser.add_argument('--n-jobs', type=int, default=4, help='Number of CPUs to use to annotate')
+    annotate_parser.add_argument('--sop', type=int, default=30, help='Seizure onset time')
+    annotate_parser.add_argument('--sph', type=int, default=5, help='Seizure prediction period')
 
     return parser
 
@@ -138,16 +138,17 @@ def calc_allowed_interictal_time_list(edf_list, ictal_section_list):
     return allowed_interictal_time_list
 
 
-def calc_allowed_preictal_time_list(edf_list, ictal_section_list):
+def calc_allowed_preictal_time_list(edf_list, ictal_section_list, seizure_onset_period, seizure_prediction_horizon):
     allowed_preictal_time_list = []
 
     for i, ictal_section in enumerate(ictal_section_list):
         prev_ictal_section = {'end': edf_list[0].start} if i == 0 else ictal_section_list[i - 1]
 
         if ictal_section['start'] - prev_ictal_section['end'] > timedelta(minutes=DURATION_AS_ONE_ICTAL):
-            duration = min((ictal_section['start'] - prev_ictal_section['end']).seconds, SOP * 60)
-            allowed_preictal_time_list.append({'start': ictal_section['start'] - timedelta(seconds=duration + SPH * 60),
-                                               'end': ictal_section['start'] - timedelta(minutes=SPH)})
+            duration = min((ictal_section['start'] - prev_ictal_section['end']).seconds, seizure_onset_period * 60)
+            allowed_preictal_time_list.append({
+                'start': ictal_section['start'] - timedelta(seconds=duration + seizure_prediction_horizon * 60),
+                'end': ictal_section['start'] - timedelta(minutes=seizure_prediction_horizon)})
     return allowed_preictal_time_list
 
 
@@ -159,14 +160,21 @@ def annotate_chbmit(data_dir, annotate_conf):
     最後にmanifestファイルを作成して終了。これを各患者毎に行う。
 
     SOP(seizure onset period)...この時間の範囲内で発作が起きるとする時間幅(分)。preictalの時間幅に対応する。
-    SPH(seizure )...alertからSOPの開始までの時間幅(分)。preictalとictalの間の時間幅に対応する。
+    SPH(seizure prediction horizon)...alertからSOPの開始までの時間幅(分)。preictalとictalの間の時間幅に対応する。
     preictalの時間はictal_start - (SOP + SPH) から ictal_start - SPH までである。
     """
     window_size = 30
     window_stride = 15
+    seizure_onset_period = annotate_conf['sop']  # min
+    seizure_prediction_horizon = annotate_conf['sph']  # min
 
     for patient_folder in Path(data_dir).iterdir():
         if not (patient_folder.is_dir() and patient_folder.name in CHBMIT_PATIENTS):
+            continue
+
+        print(patient_folder.name)
+
+        if patient_folder.name == 'chb01':
             continue
 
         edf_list = []
@@ -220,7 +228,8 @@ def annotate_chbmit(data_dir, annotate_conf):
                 edf.interictal_time_list.append({'start': start, 'end': end})
 
         # preictalの区間を決定し、各edfインスタンスに格納していく
-        allowed_pre = calc_allowed_preictal_time_list(edf_list, ictal_section_list)
+        allowed_pre = calc_allowed_preictal_time_list(edf_list, ictal_section_list, seizure_onset_period,
+                                                      seizure_prediction_horizon)
         pointer = 0
         for edf in edf_list:
             if edf.start > allowed_pre[pointer]['end']:
@@ -237,8 +246,8 @@ def annotate_chbmit(data_dir, annotate_conf):
 
         # 各edfファイルについて、各ラベルの時間帯があればそれを保存する
         saved_path_list = []
-        for edf in tqdm(edf_list):
-            save_dir = edf.file_path.parent / 'interictal_preictal' / edf.file_path.name[:-4]
+        for edf in tqdm(edf_list, disable=True):
+            save_dir = (edf.file_path.parent / 'interictal_preictal' / edf.file_path.name[:-4]).resolve()
             save_dir.mkdir(exist_ok=True, parents=True)
             saved_path_list.extend(edf.save_labels(save_dir, window_size, window_stride, annotate_conf['n_jobs']))
 
