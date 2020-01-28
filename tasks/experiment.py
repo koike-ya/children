@@ -26,7 +26,6 @@ def train_args(parser):
     parser = eeg_preprocess_args(parser)
     expt_parser = parser.add_argument_group("Experiment arguments")
     expt_parser.add_argument('--expt-id', help='data file for training', default='')
-    expt_parser.add_argument('--sr', type=int, help='Sampling rate')
     expt_parser.add_argument('--reproduce', help='Method name for reproduction', default='')
     expt_parser.add_argument('--dataloader-type', help='Dataloader type.', choices=['normal', 'eeg', 'ml'], default='eeg')
 
