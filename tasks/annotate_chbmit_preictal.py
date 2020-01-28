@@ -247,7 +247,8 @@ def annotate_chbmit(data_dir, annotate_conf):
         # 各edfファイルについて、各ラベルの時間帯があればそれを保存する
         saved_path_list = []
         for edf in tqdm(edf_list, disable=True):
-            save_dir = (edf.file_path.parent / 'interictal_preictal' / edf.file_path.name[:-4]).resolve()
+            dir_name = f'interictal_preictal_{seizure_onset_period}_{seizure_prediction_horizon}'
+            save_dir = (edf.file_path.parent / dir_name / edf.file_path.name[:-4]).resolve()
             save_dir.mkdir(exist_ok=True, parents=True)
             saved_path_list.extend(edf.save_labels(save_dir, window_size, window_stride, annotate_conf['n_jobs']))
 
