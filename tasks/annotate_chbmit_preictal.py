@@ -21,8 +21,11 @@ ICTAL_WINDOW_SIZE = 30
 def annotate_args(parser):
     annotate_parser = parser.add_argument_group('annotation arguments')
     annotate_parser.add_argument('--n-jobs', type=int, default=4, help='Number of CPUs to use to annotate')
+    annotate_parser.add_argument('--window_size', type=int, default=30, help='Split window size')
+    annotate_parser.add_argument('--window_stride', type=int, default=15, help='Split window stride')
     annotate_parser.add_argument('--sop', type=int, default=30, help='Seizure onset time')
     annotate_parser.add_argument('--sph', type=int, default=5, help='Seizure prediction period')
+    annotate_parser.add_argument('--interictal_hour', type=int, default=4, help='Hours before ictal time')
 
     return parser
 
@@ -121,19 +124,19 @@ def modify_date(edf_list):
     return edf_list
 
 
-def calc_allowed_interictal_time_list(edf_list, ictal_section_list):
+def calc_allowed_interictal_time_list(edf_list, ictal_section_list, interictal_hour=4):
     allowed_interictal_time_list = []
     whole_edf_start = edf_list[0].start
     whole_edf_end = edf_list[-1].end
 
     for i, ictal_section in enumerate(ictal_section_list):
-        prev_ictal_section = {'end': whole_edf_start - timedelta(hours=4)} if i == 0 else ictal_section_list[i - 1]
-        if ictal_section['start'] - prev_ictal_section['end'] > timedelta(hours=8):
-            allowed_interictal_time_list.append({'start': prev_ictal_section['end'] + timedelta(hours=4),
-                                                 'end': ictal_section['start'] - timedelta(hours=4)})
+        prev_ictal_section = {'end': whole_edf_start - timedelta(hours=interictal_hour)} if i == 0 else ictal_section_list[i - 1]
+        if ictal_section['start'] - prev_ictal_section['end'] > timedelta(hours=interictal_hour * 2):
+            allowed_interictal_time_list.append({'start': prev_ictal_section['end'] + timedelta(hours=interictal_hour),
+                                                 'end': ictal_section['start'] - timedelta(hours=interictal_hour)})
 
-    if whole_edf_end - ictal_section_list[-1]['end'] > timedelta(hours=4):
-        allowed_interictal_time_list.append({'start': ictal_section_list[-1]['end'] + timedelta(hours=4),
+    if whole_edf_end - ictal_section_list[-1]['end'] > timedelta(hours=interictal_hour):
+        allowed_interictal_time_list.append({'start': ictal_section_list[-1]['end'] + timedelta(hours=interictal_hour),
                                              'end': whole_edf_end})
     return allowed_interictal_time_list
 
@@ -163,19 +166,17 @@ def annotate_chbmit(data_dir, annotate_conf):
     SPH(seizure prediction horizon)...alertからSOPの開始までの時間幅(分)。preictalとictalの間の時間幅に対応する。
     preictalの時間はictal_start - (SOP + SPH) から ictal_start - SPH までである。
     """
-    window_size = 30
-    window_stride = 15
-    seizure_onset_period = annotate_conf['sop']  # min
-    seizure_prediction_horizon = annotate_conf['sph']  # min
+    window_size = annotate_conf['window_size']  # second
+    window_stride = annotate_conf['window_stride']  # second
+    seizure_onset_period = annotate_conf['sop']  # minute
+    seizure_prediction_horizon = annotate_conf['sph']  # minute
+    interictal_hour = annotate_conf['interictal_hour']  # hour
 
     for patient_folder in Path(data_dir).iterdir():
         if not (patient_folder.is_dir() and patient_folder.name in CHBMIT_PATIENTS):
             continue
 
         print(patient_folder.name)
-
-        if patient_folder.name == 'chb01':
-            continue
 
         edf_list = []
         ictal_section_list = []
@@ -212,7 +213,7 @@ def annotate_chbmit(data_dir, annotate_conf):
         edf_list = modify_date(edf_list)
 
         # interictalの区間を決定し、各edfインスタンスに格納していく
-        allowed_inte = calc_allowed_interictal_time_list(edf_list, ictal_section_list)
+        allowed_inte = calc_allowed_interictal_time_list(edf_list, ictal_section_list, interictal_hour)
         pointer = 0
         for edf in edf_list:
             if edf.start > allowed_inte[pointer]['end']:
